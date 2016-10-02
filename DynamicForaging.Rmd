@@ -64,8 +64,6 @@ mxy<-mxy[!is.na(mxy$x),]
 d<-SpatialPointsDataFrame(cbind(mxy$x,mxy$y),data=mxy,proj4string=CRS("+proj=longlat +datum=WGS84"))
 
 d<-crop(d,y=extent(c(-75,-50,-70,-57.5)))
-#give it a geospatial layer
-
 
 mxy<-as.data.frame(d)
 
@@ -106,19 +104,6 @@ ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5) + scal
 mxy$Month<-factor(mxy$Month,levels=month.name)
 m <- get_map(location=pp,source="google",zoom=5,scale=2,maptype="satellite",color = "bw")
 ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5)  + facet_wrap(~Month) + scale_color_discrete(guide="none")
-```
-
-##CCAMLR Units
-```{r}
-ccamlr<-readShapePoly("InputData/SSMU_2013/CROPCCAMLR.shp")
-
-ccamlr$Unit<-gsub(x=ccamlr$SSMUname,pattern="Antarctic Peninsula ",rep="")
-
-fccamlr<-fortify(ccamlr,region="Unit")
-
-m <- get_map(location=pp,source="google",zoom=5,scale=2,maptype="satellite",color = "bw")
-
-ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5) + scale_color_discrete(guide="none") + geom_polygon(data=fccamlr,aes(x=long,y=lat,group=id),col="black",alpha=0.01) 
 ```
 
 #Correlated random walk
@@ -289,7 +274,7 @@ data=list(argos=obs,steps=steps,R=R,ind=ind,j=j,idx=idx,tracks=tracks,Month=Mont
 pt<-c("theta","gamma","phi","alpha_mu","state")
 
 if(newModel){
-  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=5000,n.burnin=4000,n.thin=2,DIC=FALSE))
+  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10,n.burnin=0,n.thin=1,DIC=FALSE))
 }
 
 ```

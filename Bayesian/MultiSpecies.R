@@ -43,7 +43,7 @@ cat("
     T[i,g,t,2,2] <- cos(theta[state[i,g,t]])
     
     #Correlation in movement change
-    d[i,g,t,1:2] <- y[i,g,t,] + gamma[state[i,g,t],m] * T[i,g,t,,] %*% (y[i,g,t,1:2] - y[i,g,t-1,1:2])
+    d[i,g,t,1:2] <- y[i,g,t,] + gamma[state[i,g,t],MonthA[i,g,t]] * T[i,g,t,,] %*% (y[i,g,t,1:2] - y[i,g,t-1,1:2])
     
     #Gaussian Displacement
     y[i,g,t+1,1:2] ~ dmnorm(d[i,g,t,1:2],iSigma)
@@ -90,7 +90,7 @@ cat("
     # prior for gamma (autocorrelation parameter) in state 1
 
     #for each month
-    for (m in months){
+    for (m in 1:Months){
     gamma[2,m] ~ dbeta(1.5, 2)		## gamma for state 2
     dev[m] ~ dbeta(1,1)			## a random deviate to ensure that gamma[1] > gamma[2]
     gamma[1,m] <- gamma[2,m] + dev[m] 		## gamma for state 1
