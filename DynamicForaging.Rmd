@@ -10,13 +10,12 @@ output:
     toc: yes
 ---
 
-
 ```{r,warning=FALSE,message=FALSE,echo=FALSE}
 library(knitr)
 opts_chunk$set(echo=F,warning=F,message=F,fig.width = 11,fig.height = 5,cache=F)
 library(boot)
 library(raster)
-library(reshape2)
+library(tidyr)
 library(ggplot2)
 library(MASS)
 library(ggmap)
@@ -25,10 +24,8 @@ library(chron)
 library(gridExtra)
 library(stringr)
 library(R2jags)
-library(move)
-library(maps)
 library(maptools)
-
+library(reshape2)
 #New model to be run, flag turned off if just updating.
 newModel<-T
 ```
@@ -288,11 +285,7 @@ jagM <- update(jagM,n.iter=300,n.burnin=0,n.thin=0)
 ##Chains
 ```{r,eval=T}
 
-#check memory size
-lsos()
-
 #delete jags objects
-
 #rm(data)
 #rm(argos)
 #rm(obs)
@@ -313,9 +306,18 @@ pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
 splitpc<-split(pc,pc$parameter)
 
 #single index
-splitpc[c("alpha_mu","gamma","theta")]<-lapply(splitpc[c("alpha_mu","gamma","theta")],function(x){
+splitpc[c("alpha_mu","theta")]<-lapply(splitpc[c("theta")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Behavior=sv)
+    return(pc)
+})
+
+##Double index
+#single index
+splitpc[c("alpha_mu","gamma")]<-lapply(splitpc[c("alpha_mu","gamma")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("Behavior","Month")
+    pc<-data.frame(x,sv)
     return(pc)
 })
 
@@ -341,7 +343,7 @@ rm(splitpc)
 
 ```
 
-```{r,fig.height=20}
+```{r,fig.height=10}
 #plot all but phi and state
 ggplot(pc[!pc$parameter %in% c("phi","state"),],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free",ncol=3) + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 ```
@@ -359,31 +361,16 @@ pc$Behavior<-as.factor(pc$Behavior)
 ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histogram() + facet_wrap(~par,scales='free',ncol=3) + theme_bw()  + ggtitle("Estimated parameters")
 ```
 
-###Compare to priors
+Change in autocorrelation over time
 
 ```{r}
-#add comparison to priors
-todraw<-table(pc$par)[1]
-pc$Estimate<-"Posterior"
+pc$MonthA<-month.name[as.numeric(pc$Month)]
+pc$MonthA<-factor(pc$MonthA,levels=month.name)
 
-#add priors
-#alpha
-a1prior<-data.frame(Draw=1:todraw,par='alpha[1]',value=rnorm(todraw,0,1.67),parameter='alpha_mu',Behavior=1,Estimate="Prior")
+ggplot(data=pc[pc$parameter %in% c("gamma"),],aes(x=value,fill=MonthA)) + geom_density(alpha=0.5) + theme_bw()  + ggtitle("Estimated parameters") + facet_wrap(~Behavior)
 
-a2prior<-data.frame(Draw=1:todraw,par='alpha[2]',value=rnorm(todraw,0,1.67),parameter='alpha_mu',Behavior=2,Estimate="Prior")
+ggplot(data=pc[pc$parameter %in% c("gamma"),],aes(y=value,x=MonthA)) + geom_boxplot() + theme_bw()  + ggtitle("Estimated parameters") + facet_wrap(~Behavior)
 
-gamma1prior<-data.frame(Draw=1:todraw,par='gamma[1]',value=rbeta(todraw,1,10),parameter='gamma',Behavior=1,Estimate="Prior")
-
-gamma2prior<-data.frame(Draw=1:todraw,par='gamma[2]',value=rbeta(todraw,1.5,5),parameter='gamma',Behavior=2,Estimate="Prior")
-
-prs<-rbind_all(list(a1prior,a2prior,gamma1prior,gamma2prior))
-
-prs$Behavior<-as.factor(prs$Behavior)
-
-allp<-rbind_all(list(pc[!pc$parameter %in% c("phi","state"),],prs))
-
-ggplot(allp,aes(x=Behavior,y=value,fill=Estimate)) + geom_violin() + facet_wrap(~parameter,scale="free")
-rm(allp)
 ```
 
 ## Parameter Summary
@@ -393,6 +380,9 @@ psum<-pc %>% filter(!parameter %in% c("phi","state")) %>% group_by(parameter,par
 as.data.frame(psum)
 
 ggplot(psum,aes(x=par,y=mean,ymax=upper,ymin=lower)) + geom_linerange() + geom_point() + facet_wrap(~parameter,scales="free",ncol=2)
+
+#format gamma
+gammadf<-pc %>% filter(parameter=="gamma") %>% group_by(MonthA,Behavior) %>% summarize(mean=mean(value))
 ```
 
 #Behavioral Prediction
@@ -443,4 +433,48 @@ ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=phi,group=Track),size=.5)   + scal
 ```{r,fig.height=20,fig.width=13}
 #create proper time stamp
 ggplot(data=mxy,aes(x=as.POSIXct(timestamp),y=phi)) + geom_line(aes(group=Track),size=2.5) + labs("Probability of Area Restricted Search State") + theme_bw() + scale_color_continuous(low='light blue',high='black') + labs(x="Time",y="Liklihood of Area Restricted Search State") + facet_wrap(~individual.local.identifier,ncol=3,scales="free") + ylim(0,1)
+```
+
+#Simulated tracks
+
+```{r}
+source("Sim.R")
+
+#format gamma df
+gt<-gammadf %>% spread(key=Behavior,value=mean) %>% droplevels()
+gt<-split(gt[,2:3],gt$MonthA)
+
+#monthly trajectories
+mt<-lapply(gt,function(k){
+  
+  mxy<-list()
+
+  #individuals
+  ind<-2
+  
+  #Total time length for each individual track
+  step.ind<-rep(20,4)
+  
+  #time for each step
+  step_length=4
+
+  for(x in 1:ind){
+      mxy[[x]]<-traj(gamma=as.numeric(k),theta=c(0,0),a1_mu=c(0.1,0.9),a1_sd=c(0.01,0.01),total_time = step.ind[x],step_length=step_length)
+  } 
+  return(mxy)
+})
+
+mt<-melt(mt,id.vars=colnames(mt[[1]][[1]]))
+
+#Label Individual and month
+colnames(mt)[colnames(mt) %in% 'L1']<-"Month"
+colnames(mt)[colnames(mt) %in% 'L2']<-"Animal"
+
+mt$Month<-factor(mt$Month,levels=month.name)
+ggplot(mt,aes(x=x,y=y)) + theme_bw()  + geom_path(aes(col=State,group=Animal),size=1)+ facet_wrap(~Month,scales='free') + theme_classic() + theme(axis.text.x=element_blank(),axis.text.y=element_blank()) + labs(x="",y="")
+
+```
+
+```{r}
+save.image("DynamicForaging.RData")
 ```
