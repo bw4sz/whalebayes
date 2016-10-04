@@ -49,7 +49,7 @@
     }
     
     #Final behavior state
-    logit(phi[i,g,steps[i,g],1]) <- alpha_mu[state[i,g,steps[i,g]-1],Month[i,g,t]] 
+    logit(phi[i,g,steps[i,g],1]) <- alpha_mu[state[i,g,steps[i,g]-1],Month[i,g,steps[i,g]-1]] 
     phi[i,g,steps[i,g],2] <- 1-phi[i,g,steps[i,g],1]
     state[i,g,steps[i,g]] ~ dcat(phi[i,g,steps[i,g],])
     
