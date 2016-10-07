@@ -374,8 +374,9 @@ ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histog
 Change in autocorrelation over time
 
 ```{r}
-#pc$MonthA<-month.name[as.numeric(pc$Month)]
-#pc$MonthA<-factor(pc$MonthA,levels=month.name)
+
+pc[pc$parameter %in% "gamma",]$MonthA<-month.name[as.numeric(pc$Month[pc$parameter %in% "gamma"])]
+pc$MonthA<-factor(pc$MonthA,levels=month.name)
 
 ggplot(data=pc[pc$parameter %in% c("gamma"),],aes(x=value,fill=MonthA)) + geom_density(alpha=0.5) + theme_bw()  + ggtitle("Estimated parameters") + facet_wrap(~Behavior)
 
@@ -521,6 +522,8 @@ mr$bstate<-as.factor(mr$Behavior)
 levels(mr$bstate)=c("Traveling","Foraging")
 
 ggplot(mr,aes(x=bstate,y=mean,ymin=lower,ymax=upper,col=MonthA)) + geom_pointrange(size=2) + theme_bw() + ggtitle("Average Duration of Behavior") + labs(y="Hours")
+
+ggplot(runs,aes(x=Behavior,y=hours,fill=MonthA)) + geom_boxplot() + theme_bw()
 ```
 
 ```{r}
