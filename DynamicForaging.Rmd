@@ -231,9 +231,15 @@ tracks<-mxy %>% group_by(Animal) %>% summarize(tracks=length(unique(Track))) %>%
 #steps per track
 steps<-acast(steps_all,Animal~Track,value.var="n")
 
+#index array for merging
+mxy$Index<-1:nrow(mxy)
+
 #obs array
 obs<-melt(mxy,measure.vars=c("x","y"))
 obs<-acast(obs,Animal~Track~step~jStep~variable)
+
+MonthIndex<-acast(mxy,Animal~Track~step,value.var="Month",fun=function(x) names(which.max(table(x))) )
+
 ```
 
 How did the filter change the extent of tracks?
@@ -271,7 +277,7 @@ data=list(argos=obs,steps=steps,R=R,ind=ind,j=j,idx=idx,tracks=tracks,Month=Mont
 pt<-c("theta","gamma","phi","alpha_mu","state")
 
 if(newModel){
-  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=1000,n.burnin=800,n.thin=2,DIC=FALSE))
+  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10,n.burnin=0,n.thin=2,DIC=FALSE))
 }
 
 ```
@@ -341,6 +347,10 @@ splitpc[c("state")]<-lapply(splitpc[c("state")],function(x){
 pc<-rbind_all(splitpc)
 rm(splitpc)
 
+#associate month with state
+mm<-melt(MonthIndex)
+colnames(mm)<-c("Animal","Track","step","MonthA")
+pc<-merge(pc,mm,by=c("Animal","Track","step"),all.x=T)
 ```
 
 ```{r,fig.height=10}
@@ -364,13 +374,12 @@ ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histog
 Change in autocorrelation over time
 
 ```{r}
-pc$MonthA<-month.name[as.numeric(pc$Month)]
-pc$MonthA<-factor(pc$MonthA,levels=month.name)
+#pc$MonthA<-month.name[as.numeric(pc$Month)]
+#pc$MonthA<-factor(pc$MonthA,levels=month.name)
 
 ggplot(data=pc[pc$parameter %in% c("gamma"),],aes(x=value,fill=MonthA)) + geom_density(alpha=0.5) + theme_bw()  + ggtitle("Estimated parameters") + facet_wrap(~Behavior)
 
 ggplot(data=pc[pc$parameter %in% c("gamma"),],aes(y=value,x=MonthA)) + geom_boxplot() + theme_bw()  + ggtitle("Estimated parameters") + facet_wrap(~Behavior)
-
 ```
 
 ## Parameter Summary
@@ -423,7 +432,7 @@ rm(behav_chains)
 
 ```{r,fig.height=20,fig.width=13}
 #create proper time stamp
-ggplot(data=mxy,aes(x=as.POSIXct(timestamp),y=phi)) + geom_line(aes(group=Track),size=2.5) + labs("Probability of Area Restricted Search State") + theme_bw() + scale_color_continuous(low='light blue',high='black') + labs(x="Time",y="Liklihood of Area Restricted Search State") + facet_wrap(~individual.local.identifier,ncol=3,scales="free") + ylim(0,1)
+ggplot(data=mxy,aes(x=as.POSIXct(timestamp),y=as.factor(state))) + geom_line(aes(group=Track),size=1)+ theme_bw()  + facet_wrap(~individual.local.identifier,ncol=3,scales="free") + labs(x="Time",y="Behavior") 
 ```
 
 #Simulated tracks
@@ -468,15 +477,10 @@ ggplot(mt,aes(x=x,y=y)) + theme_bw()  + geom_path(aes(col=State,group=Animal),si
 ##Behavioral description
 
 ## Predicted behavior duration
+
 ```{r,fig.height=5,fig.width=14}
 
 #associate Month with state change
-a<-pc %>% filter(parameter=="state")
-
-mxy$Index<-1:nrow(mxy)
-
-data.frame(str_match(a$par,"(\\w+)\\[(\\d+),(\\d+),(\\d+)]"))[,3:5]
-
 runf<-function(x){
   #arrange by step
   #calculate run length
@@ -490,7 +494,6 @@ runf<-function(x){
 
 runs<-pc %>% filter(parameter=='state') %>% group_by(Animal,Draw,chain) %>% do(runf(.))
 
-
 #turn steps to hours
 runs$hours<-runs$runs*step_length
 ```
@@ -502,7 +505,26 @@ mr$bstate<-as.factor(mr$Behavior)
 levels(mr$bstate)=c("Traveling","Foraging")
 
 ggplot(mr,aes(x=bstate,y=mean,ymin=lower,ymax=upper)) + geom_pointrange(size=2) + theme_bw() + ggtitle("Average Duration of Behavior") + labs(y="Hours")
+```
 
+## Duration by month
+
+```{r}
+runs<-pc %>% filter(parameter=='state') %>% group_by(Animal,Draw,chain,MonthA) %>% do(runf(.))
+
+#turn steps to hours
+runs$hours<-runs$runs*step_length
+
+mr<-runs %>% group_by(Behavior,MonthA) %>% summarize(mean=mean(hours),lower=quantile(hours,0.05),upper=quantile(hours,0.95))
+
+mr$bstate<-as.factor(mr$Behavior)
+levels(mr$bstate)=c("Traveling","Foraging")
+
+ggplot(mr,aes(x=bstate,y=mean,ymin=lower,ymax=upper,col=MonthA)) + geom_pointrange(size=2) + theme_bw() + ggtitle("Average Duration of Behavior") + labs(y="Hours")
+```
+
+```{r}
+##For survival analysis, later.
 #Every run eventually ends in a switch (that's what makes it a run)
 runs$status<-1
 
