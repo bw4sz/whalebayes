@@ -206,7 +206,7 @@ sink()
 
 ```
 ##    user  system elapsed 
-##    2.14    0.87  571.87
+##    2.56    1.88  176.97
 ```
 
 
@@ -214,9 +214,9 @@ sink()
 ##Chains
 
 ```
-##            used (Mb) gc trigger  (Mb) max used  (Mb)
-## Ncells  1321537 70.6    3886542 207.6  3886542 207.6
-## Vcells 10049608 76.7   38673629 295.1 60424991 461.1
+##           used (Mb) gc trigger  (Mb) max used  (Mb)
+## Ncells 1324023 70.8    3886542 207.6  3886542 207.6
+## Vcells 8424733 64.3   25383828 193.7 49576290 378.3
 ```
 
 ![](DynamicForaging_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
@@ -226,29 +226,43 @@ sink()
 
 ![](DynamicForaging_files/figure-html/unnamed-chunk-17-1.png)<!-- -->
 
-Change in autocorrelation over time
+## Change in autocorrelation over time
 
 ![](DynamicForaging_files/figure-html/unnamed-chunk-18-1.png)<!-- -->![](DynamicForaging_files/figure-html/unnamed-chunk-18-2.png)<!-- -->
+
+# Change in transition probabilities over time
+
+![](DynamicForaging_files/figure-html/unnamed-chunk-19-1.png)<!-- -->
 
 ## Parameter Summary
 
 ```
-##    parameter        par       mean       lower     upper
-## 1      gamma gamma[1,1] 0.57498107  0.18536445 1.0253186
-## 2      gamma gamma[2,1] 0.24475529  0.03327770 0.5467314
-## 3      gamma gamma[1,2] 0.65464983  0.46661479 0.8314667
-## 4      gamma gamma[2,2] 0.18639711  0.03274480 0.4292523
-## 5      gamma gamma[1,3] 0.46599876  0.27088713 0.7303901
-## 6      gamma gamma[2,3] 0.18536830  0.03742129 0.3698750
-## 7      gamma gamma[1,4] 0.74358317  0.61028639 0.8891678
-## 8      gamma gamma[2,4] 0.14385285  0.01889966 0.3410497
-## 9      gamma gamma[1,5] 0.88321695  0.80339698 0.9684749
-## 10     gamma gamma[2,5] 0.40705174  0.07302772 0.8113132
-## 11     theta   theta[1] 0.04377467 -0.01226847 0.1004528
-## 12     theta   theta[2] 4.13997343  3.04627884 5.3439318
+##    parameter           par        mean       lower      upper
+## 1   alpha_mu alpha_mu[1,1] -0.72468699 -3.18123755 1.28157414
+## 2   alpha_mu alpha_mu[2,1]  0.38573938 -0.64178306 1.69489763
+## 3   alpha_mu alpha_mu[1,2]  1.10539564  0.64274366 1.45018470
+## 4   alpha_mu alpha_mu[2,2] -0.97832057 -1.64934873 0.03099899
+## 5   alpha_mu alpha_mu[1,3]  0.04380359 -1.16549425 1.01744452
+## 6   alpha_mu alpha_mu[2,3]  1.21421282 -0.61034886 3.44280925
+## 7   alpha_mu alpha_mu[1,4]  0.56139964 -0.09068638 1.31888232
+## 8   alpha_mu alpha_mu[2,4]  1.69692152  1.12976659 2.93533918
+## 9   alpha_mu alpha_mu[1,5] -0.04484805 -3.40859886 3.06139801
+## 10  alpha_mu alpha_mu[2,5] -0.11454987 -0.72707212 0.84448811
+## 11     gamma    gamma[1,1]  0.43308990  0.20267828 0.87079269
+## 12     gamma    gamma[2,1]  0.20324616  0.09077097 0.31367412
+## 13     gamma    gamma[1,2]  0.64241258  0.46730684 0.79009039
+## 14     gamma    gamma[2,2]  0.17373194  0.09105037 0.24032417
+## 15     gamma    gamma[1,3]  0.47147917  0.31764284 0.65297282
+## 16     gamma    gamma[2,3]  0.18630077  0.07116549 0.36809038
+## 17     gamma    gamma[1,4]  0.80064762  0.66337443 0.94846666
+## 18     gamma    gamma[2,4]  0.12929807  0.06093934 0.26581023
+## 19     gamma    gamma[1,5]  1.19603192  0.83684136 1.59006069
+## 20     gamma    gamma[2,5]  0.62390985  0.54961637 0.75809861
+## 21     theta      theta[1]  0.07313205  0.01853568 0.14455211
+## 22     theta      theta[2]  5.27477329  4.26999979 6.02154978
 ```
 
-![](DynamicForaging_files/figure-html/unnamed-chunk-19-1.png)<!-- -->
+![](DynamicForaging_files/figure-html/unnamed-chunk-20-1.png)<!-- -->
 
 #Behavioral Prediction
 
@@ -256,10 +270,28 @@ Change in autocorrelation over time
 
 ##Autocorrelation in behavior
 
-![](DynamicForaging_files/figure-html/unnamed-chunk-21-1.png)<!-- -->
+![](DynamicForaging_files/figure-html/unnamed-chunk-22-1.png)<!-- -->
 
 #Simulated tracks
 
-![](DynamicForaging_files/figure-html/unnamed-chunk-22-1.png)<!-- -->
+![](DynamicForaging_files/figure-html/unnamed-chunk-23-1.png)<!-- -->
+
+##Behavioral description
+
+## Predicted behavior duration
+
+
+
+![](DynamicForaging_files/figure-html/unnamed-chunk-25-1.png)<!-- -->
+
+## Duration by month
+
+![](DynamicForaging_files/figure-html/unnamed-chunk-26-1.png)<!-- -->![](DynamicForaging_files/figure-html/unnamed-chunk-26-2.png)<!-- -->![](DynamicForaging_files/figure-html/unnamed-chunk-26-3.png)<!-- -->
+
+
+
+#Time spent in grid cell
+
+![](DynamicForaging_files/figure-html/unnamed-chunk-28-1.png)<!-- -->![](DynamicForaging_files/figure-html/unnamed-chunk-28-2.png)<!-- -->
 
 

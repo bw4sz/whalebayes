@@ -446,7 +446,7 @@ rm(behav_chains)
 
 ##Autocorrelation in behavior
 
-```{r,fig.height=20,fig.width=13}
+```{r,fig.height=6,fig.width=11}
 #create proper time stamp
 ggplot(data=mxy,aes(x=as.POSIXct(timestamp),y=as.factor(state))) + geom_line(aes(group=Track),size=1)+ theme_bw()  + facet_wrap(~individual.local.identifier,ncol=3,scales="free") + labs(x="Time",y="Behavior") 
 ```
@@ -565,7 +565,7 @@ feedr<-runs %>% group_by(Draw,chain,Animal) %>% do(endtrack(.)) %>% filter(Behav
 
 #Time spent in grid cell
 
-```{r}
+```{r,fig.height=7,fig.width=11}
 
 #time in each cell function
   timecell<-function(j){
