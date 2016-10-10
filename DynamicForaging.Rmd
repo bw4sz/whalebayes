@@ -100,7 +100,8 @@ ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5) + scal
 ```{r,fig.height=12}
 mxy$Month<-factor(mxy$Month,levels=month.name)
 m <- get_map(location=pp,source="google",zoom=5,scale=2,maptype="satellite",color = "bw")
-ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5)  + facet_wrap(~Month) + scale_color_discrete(guide="none")
+ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5)  + facet_wrap(~Month,nrow=2) + scale_color_discrete(guide="none") + theme(axis.text.x=element_blank(),axis.text.y=element_blank(),axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + labs(x="",y="")
+ggsave("Figures/RawTracks.jpg",dpi=300,height=5,width=7)
 ```
 
 #Correlated random walk
@@ -277,7 +278,7 @@ data=list(argos=obs,steps=steps,R=R,ind=ind,j=j,idx=idx,tracks=tracks,Month=Mont
 pt<-c("theta","gamma","phi","alpha_mu","state")
 
 if(newModel){
-  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10,n.burnin=0,n.thin=2,DIC=FALSE))
+  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10,n.burnin=0,n.thin=1,DIC=FALSE))
 }
 
 ```
@@ -312,7 +313,7 @@ pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
 splitpc<-split(pc,pc$parameter)
 
 #single index
-splitpc[c("alpha_mu","theta")]<-lapply(splitpc[c("theta")],function(x){
+splitpc[c("theta")]<-lapply(splitpc[c("theta")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Behavior=sv)
     return(pc)
@@ -351,6 +352,12 @@ rm(splitpc)
 mm<-melt(MonthIndex)
 colnames(mm)<-c("Animal","Track","step","MonthA")
 pc<-merge(pc,mm,by=c("Animal","Track","step"),all.x=T)
+
+#complete level matching, ugly but successful
+
+pc[pc$parameter %in% c("alpha_mu","gamma"),]$MonthA<-month.name[as.numeric(pc$Month[pc$parameter %in% c("alpha_mu","gamma")])]
+pc$MonthA<-factor(pc$MonthA,levels=month.name)
+
 ```
 
 ```{r,fig.height=10}
@@ -371,16 +378,21 @@ pc$Behavior<-as.factor(pc$Behavior)
 ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histogram() + facet_wrap(~par,scales='free',ncol=3) + theme_bw()  + ggtitle("Estimated parameters")
 ```
 
-Change in autocorrelation over time
+## Change in autocorrelation over time
 
 ```{r}
-
-pc[pc$parameter %in% "gamma",]$MonthA<-month.name[as.numeric(pc$Month[pc$parameter %in% "gamma"])]
-pc$MonthA<-factor(pc$MonthA,levels=month.name)
-
-ggplot(data=pc[pc$parameter %in% c("gamma"),],aes(x=value,fill=MonthA)) + geom_density(alpha=0.5) + theme_bw()  + ggtitle("Estimated parameters") + facet_wrap(~Behavior)
-
+g<-pc[pc$parameter %in% c("gamma"),] %>% mutate(bstate=ifelse(Behavior==1,"Traveling","Area-restricted Search"))
+ggplot(data=g,aes(x=value,fill=MonthA)) + geom_density(alpha=0.7) + theme_bw()+ facet_wrap(~bstate,scales="free") + labs(fill="Month",x="Degree of movement autocorrelation") + scale_fill_brewer(palette="Set2")
+ggsave("Figures/Gammaplot.jpeg",height=4,width=6,dpi=300)
 ggplot(data=pc[pc$parameter %in% c("gamma"),],aes(y=value,x=MonthA)) + geom_boxplot() + theme_bw()  + ggtitle("Estimated parameters") + facet_wrap(~Behavior)
+```
+
+# Change in transition probabilities over time
+
+```{r}
+a<-pc[pc$parameter %in% c("alpha_mu"),] %>% mutate(bstate=ifelse(Behavior==1,"Remain Traveling ","Switch to Traveling"))
+ggplot(data=a,aes(x=inv.logit(value),fill=MonthA)) + geom_density(alpha=0.7) + theme_bw()+ facet_wrap(~bstate,scales="free") + labs(fill="Month",x="Transition Probability") + scale_fill_brewer(palette="Set2")
+ggsave("Figures/Alphaplot.jpeg",height=4,width=6,dpi=300)
 ```
 
 ## Parameter Summary
@@ -395,7 +407,10 @@ ggplot(psum,aes(x=par,y=mean,ymax=upper,ymin=lower)) + geom_linerange() + geom_p
 gammadf<-pc %>% filter(parameter=="gamma") %>% group_by(MonthA,Behavior) %>% summarize(mean=mean(value))
 
 #format alpha
-alphadf<-pc %>% filter(parameter=="alpha") %>% group_by(MonthA,Behavior) %>% summarize(mean=mean(value))
+alphadf<-pc %>% filter(parameter=="alpha_mu") %>% group_by(MonthA,Behavior) %>% summarize(mean=mean(value))
+
+#both
+simdf<-pc %>% filter(parameter %in% c("gamma","alpha_mu")) %>% group_by(MonthA,Behavior,parameter) %>% summarize(mean=mean(value))
 
 ```
 
@@ -442,8 +457,8 @@ ggplot(data=mxy,aes(x=as.POSIXct(timestamp),y=as.factor(state))) + geom_line(aes
 source("Sim.R")
 
 #format gamma df
-gt<-gammadf %>% spread(key=Behavior,value=mean) %>% droplevels()
-gt<-split(gt[,2:3],gt$MonthA)
+gt<-simdf %>% spread(key=Behavior,value=mean) %>% droplevels()
+gt<-split(gt[,2:4],gt$MonthA)
 
 #monthly trajectories
 mt<-lapply(gt,function(k){
@@ -460,7 +475,10 @@ mt<-lapply(gt,function(k){
   step_length=4
 
   for(x in 1:ind){
-      mxy[[x]]<-traj(gamma=as.numeric(k),theta=c(0,0),a1_mu=c(0.1,0.9),a1_sd=c(0.01,0.01),total_time = step.ind[x],step_length=step_length)
+    
+    #autocorrelation is the second row
+    #transition is first row, needs to be logit transformed.
+      mxy[[x]]<-traj(gamma=as.numeric(k[2,2:3]),theta=c(0,0),a1_mu=inv.logit(as.numeric(k[1,2:3])),a1_sd=c(0.01,0.01),total_time = step.ind[x],step_length=step_length)
   } 
   return(mxy)
 })
@@ -472,7 +490,8 @@ colnames(mt)[colnames(mt) %in% 'L1']<-"Month"
 colnames(mt)[colnames(mt) %in% 'L2']<-"Animal"
 
 mt$Month<-factor(mt$Month,levels=month.name)
-ggplot(mt,aes(x=x,y=y)) + theme_bw()  + geom_path(aes(col=State,group=Animal),size=1)+ facet_wrap(~Month,scales='free') + theme_classic() + theme(axis.text.x=element_blank(),axis.text.y=element_blank()) + labs(x="",y="")
+ggplot(mt,aes(x=x,y=y)) + theme_bw()  + geom_path(aes(col=State,group=Animal),size=1)+ facet_wrap(~Month,scales='free') + theme_classic() + theme(axis.text.x=element_blank(),axis.text.y=element_blank(),axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + labs(x="",y="")
+ggsave("Figures/SimulatedTracks.jpg",dpi=300,height=4,width=7)
 ```
 
 ##Behavioral description
@@ -521,9 +540,10 @@ mr<-runs %>% group_by(Behavior,MonthA) %>% summarize(mean=mean(hours),lower=quan
 mr$bstate<-as.factor(mr$Behavior)
 levels(mr$bstate)=c("Traveling","Foraging")
 
-ggplot(mr,aes(x=bstate,y=mean,ymin=lower,ymax=upper,col=MonthA)) + geom_pointrange(size=2) + theme_bw() + ggtitle("Average Duration of Behavior") + labs(y="Hours")
-
+ggplot(mr,aes(x=bstate,y=mean,ymin=lower,ymax=upper,col=MonthA)) + geom_pointrange(size=1.2,alpha=.7,position=position_jitter(width = 0.2,height=0)) + theme_bw() + ggtitle("Average Duration of Behavior") + labs(y="Hours",col="Month",x="Behavior")
+ggsave("Figures/Duration.jpeg",height=4,width=6,dpi=300)
 ggplot(runs,aes(x=Behavior,y=hours,fill=MonthA)) + geom_boxplot() + theme_bw()
+ggplot(runs,aes(x=hours,fill=MonthA)) + geom_density() + theme_bw() + facet_wrap(~Behavior)
 ```
 
 ```{r}
@@ -540,7 +560,88 @@ endtrack<-function(x){
 feedr<-runs %>% group_by(Draw,chain,Animal) %>% do(endtrack(.)) %>% filter(Behavior=="Foraging")
 
 #save runs to file
-write.csv(feedr,"OutData/Runs.csv")
+#write.csv(feedr,"OutData/Runs.csv")
+```
+
+#Time spent in grid cell
+
+```{r}
+
+#time in each cell function
+  timecell<-function(j){
+    
+    rlej<-rle(x=diff(j$Index))
+    position<-c(1,cumsum(rlej$lengths))
+    timestack<-c()
+    
+    #if only one position
+    if(length(position)==1){
+      timestack[1]<-0
+      
+    } else {
+      
+      #time difference between first and last point in the cell
+        for(x in 2:length(position)){
+          timed<-j[position[x-1]:position[x],]
+          timestack[x-1]<-difftime(max(timed$timestamp),min(timed$timestamp),units="days")
+      }
+    }
+  
+    out<-data.frame(Sum=sum(timestack))
+    return(out)
+  }
+  
+restime<-function(mxy){
+  #raster
+  r<-raster(extent(d)*c(1.1,1.1),nrow=100,ncol=100)
+  
+  #res(r)<-0.25
+  #put cellindex number
+  r[]<-1:ncell(r)
+  
+  sxy<-split(mxy,mxy$Animal)
+  sxy<-lapply(sxy,function(x) {x$Index<-1:nrow(x); return(x)})
+  
+  
+  #loop through all animals
+  sptracks<-lapply(sxy,function(x){
+    k<-SpatialPointsDataFrame(cbind(x$x,x$y),data=x,proj4string=CRS("+proj=longlat +datum=WGS84"))
+    
+    #get the cells that points are in
+    k$cellvalue<-raster::extract(x=r,y=k)
+    
+    #for each cell value, perform time function
+    sptrack<-as.data.frame(k) %>% group_by(Animal,cellvalue) %>% do(timecell(.))
+    return(sptrack)}
+  )
+  
+  sptracks<-rbind_all(sptracks)
+  
+  #get sum across animals
+  cellvals<-sptracks %>% group_by(cellvalue) %>% summarize(Sum=sum(Sum))
+  
+  #is there a better way to loop through?
+  r[]<-NA
+  for(x in 1:nrow(cellvals)){
+    r[cellvals$cellvalue[x]]<-cellvals$Sum[x]
+  }
+  return(r)
+}
+
+plot(restime(mxy))
+#split tracks by month data
+md<-split(mxy,mxy$Month,drop=T)
+
+r<-stack(lapply(md,restime))
+
+#turn to 
+f<-melt(data.frame(rasterToPoints(r)),id.vars=c("x","y"))
+
+#remove NA's
+f<-f %>% filter(!is.na(value))
+
+ggmap(m) + geom_tile(data=f,aes(x=x,y=y,fill=value))  + scale_fill_continuous(low="blue",high="red") + labs(fill="Days")  + facet_wrap(~variable)  + theme(axis.text.x=element_blank(),axis.text.y=element_blank(),axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + labs(x="",y="")
+ggsave("Figures/ResidencyMap.jpg",height=6,width=9,dpi=300)
 ```
 
 ```{r}
