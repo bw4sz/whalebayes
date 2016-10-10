@@ -52,7 +52,7 @@ minke<-c("131117","131118","131120","154184")
 mxy<-mxy[!mxy$individual.local.identifier %in% minke,]
 
 #grab set of animals
-mxy<-mxy[mxy$Animal %in% c("112699","121207","131151"),]
+#mxy<-mxy[mxy$Animal %in% c("112699","121207","131151"),]
 
 #empty coordinates
 mxy<-mxy[!is.na(mxy$x),]
@@ -134,9 +134,7 @@ $$\alpha_{i,2,1} = \text{Probability of switching from Foraging to traveling}$$
 $$\begin{matrix}
   \alpha_{i,1,1} & 1-\alpha_{i,1,1} \\
   \alpha_{i,2,1} & 1-\alpha_{i,2,1} \\
-\end{matrix}
-$$
-
+\end{matrix}$$
 
 With the probability of switching states:
 
@@ -201,6 +199,7 @@ mxy<-rbind_all(sxy)
 mxy$Animal<-as.numeric(as.factor(mxy$Animal))
 ```
 
+
 ```{r}
 #total number of steps per track/animal
 steps_all<-mxy %>% group_by(Animal,Track) %>% summarize(n=length(unique(step)))
@@ -243,6 +242,7 @@ MonthIndex<-acast(mxy,Animal~Track~step,value.var="Month",fun=function(x) names(
 
 ```
 
+
 How did the filter change the extent of tracks?
 
 ```{r}
@@ -254,14 +254,17 @@ m <- get_map(location=pp,source="google",zoom=5,scale=2,maptype="satellite",colo
 ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal),group=paste(Animal,Track)),size=.5) + scale_color_discrete(guide="none") + theme_inset()
 ```
 
+
 ```{r,fig.height=15}
 ggplot() +  geom_path(data=oxy,col='blue',aes(x=x,y=y)) +  geom_path(data=mxy,col='red',aes(x=x,y=y),size=2,alpha=0.7)  + facet_wrap(~individual.local.identifier,scales="free",ncol=4)
 ```
+
 
 ```{r,fig.height=3,fig.width=5}
 ggplot(data=steps_all,aes(x=n*step_length/24)) + geom_histogram() + labs(x="Days") + ggtitle("Track Length")
 ggplot(data=steps_all,aes(x=Track)) + geom_histogram() + labs(x="Subtracks per Animal")
 ```
+
 
 ```{r,child="Bayesian/MultiSpecies.R",eval=T}
 ```
@@ -278,10 +281,11 @@ data=list(argos=obs,steps=steps,R=R,ind=ind,j=j,idx=idx,tracks=tracks,Month=Mont
 pt<-c("theta","gamma","phi","alpha_mu","state")
 
 if(newModel){
-  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10,n.burnin=0,n.thin=1,DIC=FALSE))
+  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=1000,n.burnin=500,n.thin=5,DIC=FALSE))
 }
 
 ```
+
 
 ```{r,eval=F}
 #update function
@@ -360,6 +364,7 @@ pc$MonthA<-factor(pc$MonthA,levels=month.name)
 
 ```
 
+
 ```{r,fig.height=10}
 #plot all but phi and state
 ggplot(pc[!pc$parameter %in% c("phi","state"),],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free",ncol=3) + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
@@ -373,10 +378,12 @@ ggplot(pc[!pc$parameter %in% c("phi","state"),],aes(x=Draw,y=value)) + facet_wra
 pc$Behavior<-as.factor(pc$Behavior)
 ```
 
+
 ```{r,fig.height=20}
 #Plot
 ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histogram() + facet_wrap(~par,scales='free',ncol=3) + theme_bw()  + ggtitle("Estimated parameters")
 ```
+
 
 ## Change in autocorrelation over time
 
@@ -394,6 +401,7 @@ a<-pc[pc$parameter %in% c("alpha_mu"),] %>% mutate(bstate=ifelse(Behavior==1,"Re
 ggplot(data=a,aes(x=inv.logit(value),fill=MonthA)) + geom_density(alpha=0.7) + theme_bw()+ facet_wrap(~bstate,scales="free") + labs(fill="Month",x="Transition Probability") + scale_fill_brewer(palette="Set2")
 ggsave("Figures/Alphaplot.jpeg",height=4,width=6,dpi=300)
 ```
+
 
 ## Parameter Summary
 ```{r,fig.height=10,fig.width=15}
@@ -444,12 +452,14 @@ mxy<-mxy %>% arrange(Animal,Track,step,jStep)
 rm(behav_chains)
 ```
 
+
 ##Autocorrelation in behavior
 
 ```{r,fig.height=6,fig.width=11}
 #create proper time stamp
 ggplot(data=mxy,aes(x=as.POSIXct(timestamp),y=as.factor(state))) + geom_line(aes(group=Track),size=1)+ theme_bw()  + facet_wrap(~individual.local.identifier,ncol=3,scales="free") + labs(x="Time",y="Behavior") 
 ```
+
 
 #Simulated tracks
 
@@ -494,6 +504,7 @@ ggplot(mt,aes(x=x,y=y)) + theme_bw()  + geom_path(aes(col=State,group=Animal),si
 ggsave("Figures/SimulatedTracks.jpg",dpi=300,height=4,width=7)
 ```
 
+
 ##Behavioral description
 
 ## Predicted behavior duration
@@ -518,6 +529,7 @@ runs<-pc %>% filter(parameter=='state') %>% group_by(Animal,Draw,chain) %>% do(r
 runs$hours<-runs$runs*step_length
 ```
 
+
 ```{r,fig.height=4}
 mr<-runs %>% group_by(Behavior) %>% summarize(mean=mean(hours),lower=quantile(hours,0.05),upper=quantile(hours,0.95))
 
@@ -526,6 +538,7 @@ levels(mr$bstate)=c("Traveling","Foraging")
 
 ggplot(mr,aes(x=bstate,y=mean,ymin=lower,ymax=upper)) + geom_pointrange(size=2) + theme_bw() + ggtitle("Average Duration of Behavior") + labs(y="Hours")
 ```
+
 
 ## Duration by month
 
@@ -545,6 +558,7 @@ ggsave("Figures/Duration.jpeg",height=4,width=6,dpi=300)
 ggplot(runs,aes(x=Behavior,y=hours,fill=MonthA)) + geom_boxplot() + theme_bw()
 ggplot(runs,aes(x=hours,fill=MonthA)) + geom_density() + theme_bw() + facet_wrap(~Behavior)
 ```
+
 
 ```{r}
 ##For survival analysis, later.
@@ -643,6 +657,7 @@ f<-f %>% filter(!is.na(value))
 ggmap(m) + geom_tile(data=f,aes(x=x,y=y,fill=value))  + scale_fill_continuous(low="blue",high="red") + labs(fill="Days")  + facet_wrap(~variable)  + theme(axis.text.x=element_blank(),axis.text.y=element_blank(),axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + labs(x="",y="")
 ggsave("Figures/ResidencyMap.jpg",height=6,width=9,dpi=300)
 ```
+
 
 ```{r}
 save.image("DynamicForaging.RData")
