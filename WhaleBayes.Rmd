@@ -1,0 +1,202 @@
+---
+title: "Whale Bayes: On Seperating occurrence and behavior in movement ecology"
+author: "Ben Weinstein"
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    keep_md: yes
+    number_sections: yes
+    theme: spacelab
+    toc: yes
+---
+
+```{r,echo=F}
+library(raster)
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(R2jags)
+library(boot)
+library(stringr)
+```
+
+A fundamental goal in ecology is to attribute the movement of animals across space and time to ecological mechanisms. Animals travel to find food, mates, shelter, and predator free space. Using individual data to parameterize movement models, ecologist have gained insight into animal distribution, migration, and behavior.Pinning down the causes and predictors of animal movement remains a challenging task for ecologists and conservation managers in a changing world. 
+
+While there has been immense focus on describing movement processes, mechanisms, autocorrelation structures, and behavioral phases, it remains difficult to distinguish movement mechanisms across space and time. It is natural to assume that movement phases ('foraging', 'traveling', 'resting') are functions of the environment and life-history strategies. One glaring challenge is partitioning  species presence and behavior. Given that species must be present to participate in behavior, it is natural to assume that two processes are invariably linked. However, when we begin to think about predicting species behavior, we may spuriously conflate the predictors of animal behavior with the predictor of species presence. To date, all movement models assume that presence is given, and seek to extract the environment signatures of behavior based on logistic funtions and markov-models of state dependence. Our aim to step back and relate the huge body of movement ecology literature with the equally well-developed literature of species distribution modeling. We were inspired by the recent paper (Gravel) seeking to biotic interactions and distributions at scale. Our conceptual framework is based on Bayes Rule and statements of conditional probability.
+
+Consider a grid of cells
+
+```{r}
+library(raster)
+r<-raster(nrows=10,ncol=10)
+r[]<-1:ncell(r)
+plot(r)
+```
+
+Species presence at a given cell X is
+
+$$ P(X=1) = 0.5 $$
+
+The probability of species X existing in one of two behavior phases is:
+
+$$ P(B=1) = 0.5 $$
+
+Since we assume species movement stem from just two behavioral phases, the converse probability is:
+
+$$ P(B=1) = 0.5 $$
+
+Therefore the conditional probability of observing a species in cell X = [x,y] existing in behavioral phase B=1 is:
+
+$$ P(B=1|X=1) = P(B=1) * B(X=1)$$
+
+We can therefore model the joint probability of occurrence and behavior as arriving from seperate functions.
+
+### Liklihood Analysis
+
+Since we have a mixture of two processes, we can model the outcome occurrence and behavior state as a binomial and multinomial mixture model. For the sake of simplicity, we model just the probability of state = 1.
+
+
+$$ X = Bernoulli(z)  $$
+$$ z= \phi * \rho$$
+$$ Occurrence \sim Bernoulli(\phi)$$
+$$ Behavior \sim Bernoulli(\rho)$$
+
+
+## Example 1: Random occurrence with random behavior
+
+```{r}
+r<-raster(nrows=10,ncol=10)
+
+#Occurrence
+occ<-rbinom(n=ncell(r),size=1,prob=0.5)
+
+#Behavior
+beh<-rbinom(n=ncell(r),size=1,prob=0.5) + 1
+
+occ * beh
+r[]<-occ * beh
+plot(r)
+
+#get x y locations
+
+dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
+
+#just state ==1
+dat$v<-(dat$r==1)*1
+```
+
+```{r,eval=T}
+#source jags file
+source("Bayesian/Intercept.R")
+
+data=list(
+  cell=dat$cell,
+  cells=max(dat$cell),
+  X=dat$v
+)
+
+#paramters to track
+pt<-c("phi","rho","z")
+
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=5000,n.burnin=0,n.thin=1,DIC=FALSE))
+
+
+#bind chains
+pc<-melt(jagM$BUGSoutput$sims.array)
+colnames(pc)<-c("Draw","chain","par","value")
+
+ggplot(pc,aes(x=Draw,y=value)) + facet_wrap(~par,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
+
+ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="black")
+```
+
+While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
+
+The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r as.numeric(pc %>% filter(par %in% "z") %>% summarize(mean(value)))`
+
+## Example 2: Environmentally dependent occurrence with random behavior
+
+Moving towards the aim of analysis, let's continue with environmentally dependent occurrence, but environmentally independent behavior. We do not claim that behavior is itself random, but that the marginal probabilities of behavior are 0.5 with respect to the environmental conditions of the cell.
+
+$$ X = Bernoulli(z)  $$
+$$ z= \phi * \rho$$
+$$ logit(\phi) = \alpha + \beta * environment $$
+
+```{r}
+r<-raster(nrows=10,ncol=10)
+r[]<-1:ncell(r)
+env<-raster(nrows=10,ncol=10)
+
+#environment
+for(x in 1:ncol(env)){
+  env[,x]<-x
+}
+
+#env functions
+alpha=-5
+beta=1
+po<-inv.logit(alpha + beta *env[])
+
+qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
+
+#Occurrence is a function of temperature
+occ<-rbinom(n=ncell(r),size=1,prob=po)
+
+#Behavior
+rho=0.5
+beh<-rbinom(n=ncell(r),size=1,prob=rho) + 1
+
+occ * beh
+r[]<-occ * beh
+plot(r)
+
+#get x y locations
+
+dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
+
+#just state ==1
+dat$v<-(dat$r==1)*1
+```
+
+```{r,eval=T}
+#source jags file
+source("Bayesian/Env.R")
+
+data=list(
+  cell=dat$cell,
+  cells=max(dat$cell),
+  X=dat$v,
+  env=env[]
+)
+
+#paramters to track
+pt<-c("phi","rho","z","alpha","beta")
+
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10000,n.burnin=19900,n.thin=1,DIC=FALSE))
+
+
+#bind chains
+pc<-melt(jagM$BUGSoutput$sims.array)
+colnames(pc)<-c("Draw","chain","par","value")
+
+
+#extract parameter name
+pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+
+ggplot(pc[pc$parameter %in% c("alpha","beta","rho"), ],aes(x=Draw,y=value)) + facet_wrap(~parameter,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
+
+#add in true lines
+
+true_state<-data.frame(parameter=c("alpha","beta","rho"),value=c(alpha,beta,rho))
+ggplot(pc[pc$parameter %in% c("alpha","beta","rho"),],aes(x=value))  + geom_density(fill="black") + geom_vline(data=true_state,col="red",linetype="dashed",aes(xintercept=value))+ facet_wrap(~parameter,scales="free")
+```
+
+While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
+
+The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r as.numeric(pc %>% filter(par %in% "z") %>% summarize(mean(value)))`
+
+
+
+
+We want to stress that in no way are we degraded the very excellent work by many movement ecologists. Nor are we claiming that the divide among occurrence and behavior was unknown. Instead we aim to link two parts of ecological thought, which we hope will motivate continued development within these communities. 
+
