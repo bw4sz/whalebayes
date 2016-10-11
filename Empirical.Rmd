@@ -253,8 +253,42 @@ plot(ab<-pres>0)
 
 ```{r}
 #mask out land
-plot(elev[elev>0])
-sampleRandom(sp,)
+elev[elev>0]<-NA
+
+#resample to the observed raster
+re<-resample(elev,ab)
+
+#mask out observe locations
+temp<-ab
+
+re2<-mask(re,temp,inverse=T)
+
+#take twice as many absence as presence points
+psuedo<-sampleRandom(re2,size=sum(ab[],na.rm=T),sp=T,xy=T,na.rm=T)
+
+#create a dataframe of species and absence points
+predf<-data.frame(rasterToPoints(ab))
+absdf<-data.frame(psuedo) %>% select(x,y) %>% mutate(layer=0)
+occ<-rbind_all(list(predf,absdf))
+
+#turn back to spatial points
+occ<-SpatialPointsDataFrame(cbind(occ$x,occ$y),data=occ)
+
+#update the raster layer
+temp<-ab
+plot(presab<-rasterize(occ,ab,field='layer'),main="Presence Absence Raster",col=topo.colors(10),xaxt='n',yaxt='n')
+```
+
+#Extract environment
+
+```{r}
+#bathymetry
+occ$bat<-raster::extract(elev,occ)
+
+#distance to coast
+
+#this is ugly but for the moment make NA 0's, it comes from the aggregating spatial resolutions.
+occ$bat[is.na(occ$bat)]<-0
 ```
 
 ```{r,child="Bayesian/MultiSpecies.R",eval=T}
@@ -356,12 +390,10 @@ pc$MonthA<-factor(pc$MonthA,levels=month.name)
 
 ```
 
-
 ```{r,fig.height=10}
 #plot all but phi and state
 ggplot(pc[!pc$parameter %in% c("phi","state"),],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free",ncol=3) + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 ```
-
 
 ```{r,eval=F}
 #write.csv
