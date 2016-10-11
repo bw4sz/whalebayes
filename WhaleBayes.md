@@ -1,13 +1,16 @@
-# Whale Bayes: On seperating occurrence and behavior in movement ecology
+# Whale Bayes: On seperating predictors of occurrence and behavior in animal movement
 Ben Weinstein  
 `r Sys.time()`  
 
 
 
+#Aim
+
 A fundamental goal in ecology is to attribute the movement of animals across space and time to ecological mechanisms. Animals travel to find food, mates, shelter, and predator free space. Using individual data to parameterize movement models, ecologist have gained insight into animal distribution, migration, and behavior.Pinning down the causes and predictors of animal movement remains a challenging task for ecologists and conservation managers in a changing world. 
 
 While there has been immense focus on describing movement processes, mechanisms, autocorrelation structures, and behavioral phases, it remains difficult to distinguish movement mechanisms across space and time. It is natural to assume that movement phases ('foraging', 'traveling', 'resting') are functions of the environment and life-history strategies. One glaring challenge is partitioning  species presence and behavior. Given that species must be present to participate in behavior, it is natural to assume that two processes are invariably linked. However, when we begin to think about predicting species behavior, we may spuriously conflate the predictors of animal behavior with the predictor of species presence. To date, all movement models assume that presence is given, and seek to extract the environment signatures of behavior based on logistic funtions and markov-models of state dependence. Our aim to step back and relate the huge body of movement ecology literature with the equally well-developed literature of species distribution modeling. We were inspired by the recent paper (Gravel) seeking to biotic interactions and distributions at scale. Our conceptual framework is based on Bayes Rule and statements of conditional probability.
 
+# Simulation
 Consider a grid of cells
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-2-1.png" style="display: block; margin: auto;" />
@@ -70,14 +73,14 @@ sink()
 
 ```
 ##    user  system elapsed 
-##    0.06    0.02    3.08
+##    0.06    0.03    3.08
 ```
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-5-1.png" style="display: block; margin: auto;" /><img src="WhaleBayes_files/figure-html/unnamed-chunk-5-2.png" style="display: block; margin: auto;" />
 
 While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
 
-The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is 0.76, very close to the true known value of 0.25. As we increase the grid size (more data), we would converge on the true answer.
+The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is 0.28, very close to the true known value of 0.25. As we increase the grid size (more data), we would converge on the true answer.
 
 ## Example 2: Environmentally dependent occurrence with random behavior
 
@@ -118,7 +121,7 @@ sink()
 
 ```
 ##    user  system elapsed 
-##    0.70    0.08   31.03
+##    0.66    0.05   30.00
 ```
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-8-1.png" style="display: block; margin: auto;" /><img src="WhaleBayes_files/figure-html/unnamed-chunk-8-2.png" style="display: block; margin: auto;" />
@@ -170,7 +173,7 @@ sink()
 
 ```
 ##    user  system elapsed 
-##    0.03    0.00   44.16
+##    0.04    0.03   37.69
 ```
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-11-1.png" style="display: block; margin: auto;" /><img src="WhaleBayes_files/figure-html/unnamed-chunk-11-2.png" style="display: block; margin: auto;" />

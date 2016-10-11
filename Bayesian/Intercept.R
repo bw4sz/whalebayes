@@ -5,13 +5,15 @@ model{
     #Liklihood
 
     for (cell in 1:cells){
-      X[cell] ~ dbern(z)
+      
+      beh[cell] ~ dbern(rho*X[cell]+0.000001)
+
+      X[cell] ~ dbern(phi)
     }
 
     #conditional
-    z=rho * phi
+    #z=rho * phi
 
-    #Priors
     rho ~ dbeta(1,1)
     phi ~ dbeta(1,1)
 

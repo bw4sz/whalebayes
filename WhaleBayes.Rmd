@@ -73,23 +73,22 @@ $$ Behavior \sim Bernoulli(\rho)$$
 ## Example 1: Random occurrence with random behavior
 
 ```{r}
-r<-raster(nrows=10,ncol=10)
+r<-raster(nrows=20,ncol=20)
 
 #Occurrence
-occ<-rbinom(n=ncell(r),size=1,prob=0.5)
+phi=0.5
+occ<-rbinom(n=ncell(r),size=1,prob=phi)
 
 #Behavior
-beh<-rbinom(n=ncell(r),size=1,prob=0.5) + 1
+rho=0.5
+beh<-rbinom(n=ncell(r),size=1,prob=rho) + 1
 
 r[]<-occ * beh
 plot(r)
 
 #get x y locations
 
-dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
-
-#just state ==1
-dat$v<-(dat$r==1)*1
+dat<-data.frame(cell=1:ncell(r),occ,beh)
 ```
 
 ```{r,child="Bayesian/Intercept.R",eval=T}
@@ -102,13 +101,16 @@ source("Bayesian/Intercept.R")
 data=list(
   cell=dat$cell,
   cells=max(dat$cell),
-  X=dat$v
+  X=dat$occ,
+  #state 1 behav
+  beh=(dat$beh==1)*1
 )
 
 #paramters to track
 pt<-c("phi","rho","z")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=5000,n.burnin=0,n.thin=1,DIC=FALSE))
+
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=20000,n.burnin=19000,n.thin=1,DIC=FALSE))
 
 
 #bind chains
@@ -117,7 +119,8 @@ colnames(pc)<-c("Draw","chain","par","value")
 
 ggplot(pc,aes(x=Draw,y=value)) + facet_wrap(~par,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 
-ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="black")
+true_state<-data.frame(parameter=c("phi","rho"),value=c(phi,rho))
+ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="black") + geom_vline(data=true_state,col="red",linetype="dashed",aes(xintercept=value))
 ```
 
 While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
@@ -133,9 +136,9 @@ $$ z= \phi * \rho$$
 $$ logit(\phi) = \alpha + \beta * environment $$
 
 ```{r}
-r<-raster(nrows=10,ncol=10)
+r<-raster(nrows=20,ncol=20)
 r[]<-1:ncell(r)
-env<-raster(nrows=10,ncol=10)
+env<-raster(nrows=20,ncol=20)
 
 #environment
 for(x in 1:ncol(env)){
@@ -144,7 +147,7 @@ for(x in 1:ncol(env)){
 
 #env functions
 alpha=-2
-beta=.5
+beta=0.1
 po<-inv.logit(alpha + beta *env[])
 
 qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
@@ -184,7 +187,7 @@ data=list(
 #paramters to track
 pt<-c("phi","rho","z","alpha","beta")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=49500,n.thin=1,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=49000,n.thin=1,DIC=FALSE))
 
 
 #bind chains
@@ -217,9 +220,9 @@ $$ logit(\rho) = \alpha_2 + \beta_2 * environment_2 $$
 Where the environmental predictors for occurrence and behavior are different variables (eg. temperature, bathymetry).
 
 ```{r}
-r<-raster(nrows=10,ncol=10)
+r<-raster(nrows=20,ncol=20)
 r[]<-1:ncell(r)
-env<-raster(nrows=10,ncol=10)
+env<-raster(nrows=20,ncol=20)
 
 #environment 1
 for(x in 1:ncol(env)){
@@ -231,16 +234,16 @@ alpha=-2
 beta=.5
 po<-inv.logit(alpha + beta *env[])
 
-env2<-raster(nrows=10,ncol=10)
+env2<-raster(nrows=20,ncol=20)
 
 #environment 1
 for(x in 1:nrow(env2)){
   env2[x,]<-x
 }
 
-#env 1 functions for occurrence
-alpha2=-2
-beta2=1
+#env 2 functions for behavior
+alpha2=-1
+beta2=0.5
 bo<-inv.logit(alpha2 + beta2 *env2[])
 
 qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
@@ -250,7 +253,6 @@ qplot(env2[],bo,geom=c("point")) + labs(x="Environment",y="Probability of Behavi
 occ<-rbinom(n=ncell(r),size=1,prob=po)
 
 #Behavior
-
 beh<-rbinom(n=ncell(r),size=1,prob=bo) + 1
 
 r[]<-occ * beh
@@ -258,9 +260,6 @@ plot(r)
 
 #get x y locations
 dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
-
-#just state ==1
-dat$v<-(dat$r==1)*1
 ```
 
 ```{r,child="Bayesian/Env2.R",eval=T}
@@ -273,15 +272,16 @@ source("Bayesian/Env2.R")
 data=list(
   cell=dat$cell,
   cells=max(dat$cell),
-  X=dat$v,
+  X=dat$occ,
   env=env[],
-  env2=env2[]
+  env2=env2[],
+  beh=(dat$beh==1)*1
 )
 
 #paramters to track
 pt<-c("alpha2","beta2","alpha","beta")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env2.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=45000,n.thin=2,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env2.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=45000,n.thin=4s,DIC=FALSE))
 
 #bind chains
 pc<-melt(jagM$BUGSoutput$sims.array)
@@ -291,7 +291,7 @@ colnames(pc)<-c("Draw","chain","par","value")
 #extract parameter name
 pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
 
-ggplot(pc[pc$parameter %in% c("alpha","beta","beta2","alpha2"), ],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
+ggplot(pc[pc$parameter %in% c("alpha","beta","beta2","alpha2"), ],aes(x=Draw,y=value)) + facet_wrap(~parameter,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 
 #add in true lines
 
