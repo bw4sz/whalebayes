@@ -1,0 +1,496 @@
+---
+title: "Dynamic Foraging Patterns in Antarctic Humpbacks"
+author: "Ben Weinstein"
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    keep_md: yes
+    number_sections: yes
+    theme: spacelab
+    toc: yes
+---
+
+```{r,warning=FALSE,message=FALSE,echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=F,warning=F,message=F,fig.width = 11,fig.height = 5,cache=F)
+library(boot)
+library(raster)
+library(tidyr)
+library(ggplot2)
+library(MASS)
+library(ggmap)
+library(dplyr)
+library(chron)
+library(gridExtra)
+library(stringr)
+library(R2jags)
+library(maptools)
+library(reshape2)
+#New model to be run, flag turned off if just updating.
+newModel<-T
+```
+
+```{r,eval=F}
+#Load in data
+load("Empirical.RData")
+#jags$recompile()
+newModel<-F
+```
+
+```{r}
+
+#load elevation layer
+elev<-raster("InputData/ETOPO1_Ice_g_geotiff.tif")
+
+
+#read data
+mdat<-read.csv("InputData/Antarctic Humpback overlap with krill fisheries -3085052751565071394.csv")
+#standardize column names to match the simulation
+#Create an animal tag.
+mxy <- as(mdat, "data.frame")
+mxy$Animal<-mxy$individual.local.identifier
+mxy$x<-mxy$location.long
+mxy$y<-mxy$location.lat
+
+#remove minke whales, they should already be gone.
+minke<-c("131117","131118","131120","154184")
+mxy<-mxy[!mxy$individual.local.identifier %in% minke,]
+
+#grab set of animals
+mxy<-mxy[mxy$Animal %in% c("112699","121207","131151"),]
+
+#empty coordinates
+mxy<-mxy[!is.na(mxy$x),]
+
+#crop by extent
+d<-SpatialPointsDataFrame(cbind(mxy$x,mxy$y),data=mxy,proj4string=CRS("+proj=longlat +datum=WGS84"))
+
+d<-crop(d,y=extent(c(-75,-50,-70,-57.5)))
+
+mxy<-as.data.frame(d)
+
+#set datestamp
+mxy$timestamp<-as.POSIXct(mxy$timestamp,format="%Y-%m-%d %H:%M:%S.000")
+
+#month and year columns
+mxy$Month<-months(mxy$timestamp)
+mxy$Year<-years(mxy$timestamp)
+
+#Only austral sping and summer
+mxy<-mxy[mxy$Month %in% month.name[1:7],]
+
+#remove empty timestamps
+mxy<-mxy[!is.na(mxy$timestamp),]
+
+#remove duplicates
+mxy<-mxy[!duplicated(data.frame(mxy$timestamp,mxy$Animal)),]
+
+```
+
+```{r}
+#hold copy of orig
+oxy<-mxy
+
+#remake spatial object
+d<-SpatialPointsDataFrame(cbind(mxy$x,mxy$y),data=mxy,proj4string=CRS("+proj=longlat +datum=WGS84"))
+
+#Plot
+pp<-c(mean(mxy$x),mean(mxy$y))
+m <- get_map(location=pp,source="google",zoom=4,scale=2,maptype="satellite",color = "bw")
+ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5) + scale_color_discrete(guide="none") + theme_inset()
+```
+
+#Correlated random walk
+
+*Process Model*
+
+$$ d_{t} \sim T*d_{t-1} + Normal(0,\Sigma)$$
+$$ x_t = x_{t-1} + d_{t} $$
+
+## Parameters
+
+For each individual:
+
+$$\theta = \text{Mean turning angle}$$
+$$\gamma = \text{Move persistence} $$
+
+For both behaviors process variance is:
+$$ \sigma_{latitude} = 0.1$$
+$$ \sigma_{longitude} = 0.1$$
+
+##Behavioral States
+
+$$ \text{For each individual i}$$
+$$ Behavior_1 = \text{traveling}$$
+$$ Behavior_2 = \text{foraging}$$
+
+$$ \alpha_{i,1,1} = \text{Probability of remaining traveling when traveling}$$
+$$\alpha_{i,2,1} = \text{Probability of switching from Foraging to traveling}$$
+
+$$\begin{matrix}
+  \alpha_{i,1,1} & 1-\alpha_{i,1,1} \\
+  \alpha_{i,2,1} & 1-\alpha_{i,2,1} \\
+\end{matrix}$$
+
+With the probability of switching states:
+
+$$logit(\phi_{traveling}) = \alpha_{Behavior_{t-1}}$$
+
+$$\phi_{foraging} = 1 - \phi_{traveling} $$
+
+##Continious tracks
+
+The transmitter will often go dark for 10 to 12 hours, due to weather, right in the middle of an otherwise good track. The model requires regular intervals to estimate the turning angles and temporal autocorrelation. As a track hits one of these walls, call it the end of a track, and begin a new track once the weather improves. We can remove any micro-tracks that are less than three days.
+Specify a duration, calculate the number of tracks and the number of removed points. Iteratively.
+
+```{r}
+##Time is the beginning of the first point.
+step_length=12
+
+sxy<-split(mxy,mxy$Animal)
+
+#time diff function
+timed<-function(d,step_length){
+  d$j[1]<-0
+  for (x in 2:nrow(d)){
+    d$j[x]<-as.numeric(difftime(as.POSIXct(d$timestamp[x]),as.POSIXct(d$timestamp[x-1]),units="mins"))/(step_length*60)
+  }
+  
+  #Split out track endings
+  ends<-c(1,which(d$j>1),nrow(d))
+
+  for(w in 2:length(ends)){
+    d[ends[w-1]:ends[w],"Track"]<-w-1
+  }
+  
+  #remove tracks that are shorter than three days
+  track_time<-d %>% group_by(Track) %>% summarize(mt=difftime(max(as.POSIXct(timestamp)),min(as.POSIXct(timestamp)),units="hours")) %>% filter(mt>=24) %>% .$Track
+  
+  d<-d[d$Track %in% track_time,]
+  
+  #renumber the tracks
+  d$Track<-as.numeric(as.factor(d$Track))
+  return(d)
+  }
+
+sxy<-lapply(sxy,timed,step_length=12)
+
+#Format matrices for jags
+mxy<-rbind_all(sxy)
+
+######recode whales
+#mxy$Animal<-as.numeric(as.factor(mxy$Animal))
+
+sxy<-split(mxy,list(mxy$Animal,mxy$Track),drop=TRUE)
+
+sxy<-lapply(sxy,function(x){
+#How many observations in each step length segment
+x$step<-as.numeric(cut(as.POSIXct(x$timestamp),"12 hours"))
+return(x)
+})
+
+mxy<-rbind_all(sxy)
+
+#refactor animal
+mxy$Animal<-as.numeric(as.factor(mxy$Animal))
+```
+
+```{r}
+#total number of steps per track/animal
+steps_all<-mxy %>% group_by(Animal,Track) %>% summarize(n=length(unique(step)))
+
+# give each step a label
+mxy<-mxy %>% group_by(Animal,Track,step) %>% mutate(jStep=1:n())
+
+#Cast time array
+j<-acast(mxy,Animal~Track~step~jStep,value.var="j")
+
+#how many observations per individual in each step
+mxy$step<-factor(mxy$step,levels=1:max(steps_all$n))
+idx<-melt(table(mxy$Animal,mxy$Track,mxy$step))
+colnames(idx)<-c("Animal","Track","step","jStep")
+idx<-acast(data=idx,Animal~Track~step)
+
+#month array
+mxy$MonthF<-as.numeric(factor(mxy$Month,levels=month.name))
+
+MonthA<-acast(mxy,Animal~Track~step,value.var="MonthF",fun.aggregate = min)
+MonthA[!is.finite(MonthA)]<-NA
+
+#Individuals
+ind=length(unique(mxy$Animal))
+
+#tracks per indivudal
+tracks<-mxy %>% group_by(Animal) %>% summarize(tracks=length(unique(Track))) %>% .$tracks
+
+#steps per track
+steps<-acast(steps_all,Animal~Track,value.var="n")
+
+#index array for merging
+mxy$Index<-1:nrow(mxy)
+
+#obs array
+obs<-melt(mxy,measure.vars=c("x","y"))
+obs<-acast(obs,Animal~Track~step~jStep~variable)
+```
+
+#Create presence map
+
+```{r}
+d2<-SpatialPointsDataFrame(cbind(mxy$x,mxy$y),data=data.frame(mxy),proj4string=CRS("+proj=longlat +datum=WGS84"))
+#add a dummy code
+d2$dummy<-1
+
+r<-raster(d2,ncol=100,nrow=100)
+pres<-rasterize(d2,r,field="dummy",fun="count")
+plot(pres)
+
+#make pres absence 
+plot(ab<-pres>0)
+```
+
+## Draw random background points for psuedo-absences
+
+```{r}
+#mask out land
+plot(elev[elev>0])
+sampleRandom(sp,)
+```
+
+```{r,child="Bayesian/MultiSpecies.R",eval=T}
+```
+
+```{r,eval=T}
+#source jags file
+source("Bayesian/MultiSpecies.R")
+
+#prior cov shape
+R <- diag(c(1,1))
+data=list(argos=obs,steps=steps,R=R,ind=ind,j=j,idx=idx,tracks=tracks,Month=MonthA,Months=max(MonthA,na.rm=T))
+
+#paramters to track
+pt<-c("theta","gamma","phi","alpha_mu","state")
+
+if(newModel){
+  system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10,n.burnin=0,n.thin=1,DIC=FALSE))
+}
+
+```
+
+
+```{r,eval=F}
+#update function
+recompile(jagM)
+jagM <- update(jagM,n.iter=300,n.burnin=0,n.thin=0) 
+```
+
+##Chains
+```{r,eval=T}
+
+#delete jags objects
+#rm(data)
+#rm(argos)
+#rm(obs)
+#rm(j)
+gc()
+
+#bind chains
+pc<-melt(jagM$BUGSoutput$sims.array)
+
+rm(jagM)
+gc()
+
+colnames(pc)<-c("Draw","chain","par","value")
+
+#extract parameter name
+pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+
+#Extract index
+splitpc<-split(pc,pc$parameter)
+
+#single index
+splitpc[c("theta")]<-lapply(splitpc[c("theta")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
+    pc<-data.frame(x,Behavior=sv)
+    return(pc)
+})
+
+##Double index
+#single index
+splitpc[c("alpha_mu","gamma")]<-lapply(splitpc[c("alpha_mu","gamma")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("Behavior","Month")
+    pc<-data.frame(x,sv)
+    return(pc)
+})
+
+#Three index
+splitpc[c("phi")]<-lapply(splitpc[c("phi")],function(x){
+#As matrices
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+),(\\d+),(\\d+)]"))[,3:6]
+    colnames(sv)<-c("Animal","Track","step","Behavior")
+    pc<-data.frame(x,sv)
+})
+
+#State index
+splitpc[c("state")]<-lapply(splitpc[c("state")],function(x){
+#As matrices
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+),(\\d+)]"))[,3:5]
+    colnames(sv)<-c("Animal","Track","step")
+    pc<-data.frame(x,sv)
+})
+
+#bind all matrices back together
+pc<-rbind_all(splitpc)
+rm(splitpc)
+
+#associate month with state
+mm<-melt(MonthIndex)
+colnames(mm)<-c("Animal","Track","step","MonthA")
+pc<-merge(pc,mm,by=c("Animal","Track","step"),all.x=T)
+
+#complete level matching, ugly but successful
+
+pc[pc$parameter %in% c("alpha_mu","gamma"),]$MonthA<-month.name[as.numeric(pc$Month[pc$parameter %in% c("alpha_mu","gamma")])]
+pc$MonthA<-factor(pc$MonthA,levels=month.name)
+
+```
+
+
+```{r,fig.height=10}
+#plot all but phi and state
+ggplot(pc[!pc$parameter %in% c("phi","state"),],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free",ncol=3) + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
+```
+
+
+```{r,eval=F}
+#write.csv
+#write.csv(pc,"OutData/pars.csv")
+#pc<-read.csv("OutData/pars.csv")
+pc$Behavior<-as.factor(pc$Behavior)
+```
+
+
+```{r,fig.height=20}
+#Plot
+ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histogram() + facet_wrap(~par,scales='free',ncol=3) + theme_bw()  + ggtitle("Estimated parameters")
+```
+
+#Behavioral Prediction
+
+```{r}
+#We just need Foraging behavior
+behav_chains<-pc[pc$parameter %in% "phi" & pc$Behavior==2,]
+
+#arrange by time - capitalize
+behav_chains$step<-as.numeric(as.character(behav_chains$step))
+behav_chains<-behav_chains %>% arrange(step)
+
+#Label Behaviors
+behav_chains$Behavior<-as.factor(behav_chains$Behavior)
+levels(behav_chains$Behavior)<-c("Traveling","Area Restricted Search")
+
+#mean transition probability
+mean_phi<-behav_chains %>% group_by(Animal,Track,step) %>% summarize(phi=mean(value))
+
+#mode state for each position
+mode_state<-pc %>% filter(pc$parameter %in% "state") %>% group_by(Animal,Track,step) %>% summarize(state=as.numeric(names(which.max(table(value)))))
+
+mxy<-merge(mxy,mean_phi,by=c("step","Track","Animal"))
+
+mxy<-merge(mxy,mode_state,by=c("step","Track","Animal"))
+
+#ensure order for plotting
+mxy<-mxy %>% arrange(Animal,Track,step,jStep)
+
+rm(behav_chains)
+```
+
+# Create Behavior maps 
+
+```{r,fig.height=7,fig.width=11}
+
+#time in each cell function
+  timecell<-function(j){
+    
+    rlej<-rle(x=diff(j$Index))
+    position<-c(1,cumsum(rlej$lengths))
+    timestack<-c()
+    
+    #if only one position
+    if(length(position)==1){
+      timestack[1]<-0
+      
+    } else {
+      
+      #time difference between first and last point in the cell
+        for(x in 2:length(position)){
+          timed<-j[position[x-1]:position[x],]
+          timestack[x-1]<-difftime(max(timed$timestamp),min(timed$timestamp),units="days")
+      }
+    }
+  
+    out<-data.frame(Sum=sum(timestack))
+    return(out)
+  }
+  
+restime<-function(mxy){
+  #raster
+  r<-raster(extent(d)*c(1.1,1.1),nrow=100,ncol=100)
+  
+  #res(r)<-0.25
+  #put cellindex number
+  r[]<-1:ncell(r)
+  
+  sxy<-split(mxy,mxy$Animal)
+  sxy<-lapply(sxy,function(x) {x$Index<-1:nrow(x); return(x)})
+  
+  
+  #loop through all animals
+  sptracks<-lapply(sxy,function(x){
+    k<-SpatialPointsDataFrame(cbind(x$x,x$y),data=x,proj4string=CRS("+proj=longlat +datum=WGS84"))
+    
+    #get the cells that points are in
+    k$cellvalue<-raster::extract(x=r,y=k)
+    
+    #for each cell value, perform time function
+    sptrack<-as.data.frame(k) %>% group_by(Animal,cellvalue) %>% do(timecell(.))
+    return(sptrack)}
+  )
+  
+  sptracks<-rbind_all(sptracks)
+  
+  #get sum across animals
+  cellvals<-sptracks %>% group_by(cellvalue) %>% summarize(Sum=sum(Sum))
+  
+  #is there a better way to loop through?
+  r[]<-NA
+  for(x in 1:nrow(cellvals)){
+    r[cellvals$cellvalue[x]]<-cellvals$Sum[x]
+  }
+  return(r)
+}
+
+plot(restime(mxy))
+
+#split tracks by month data, just get foraging data
+md<-split(mxy[mxy$state==2,],mxy[mxy$state==2,"Month"],drop=T)
+
+r<-stack(lapply(md,restime))
+
+plot(r)
+
+#turn to 
+f<-melt(data.frame(rasterToPoints(r)),id.vars=c("x","y"))
+
+#remove NA's
+f<-f %>% filter(!is.na(value))
+
+ggmap(m) + geom_tile(data=f,aes(x=x,y=y,fill=value))  + scale_fill_continuous(low="blue",high="red") + labs(fill="Days")  + facet_wrap(~variable)  + theme(axis.text.x=element_blank(),axis.text.y=element_blank(),axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + labs(x="",y="")
+ggsave("Figures/ResidencyMap.jpg",height=6,width=9,dpi=300)
+```
+
+
+```{r}
+save.image("DynamicForaging.RData")
+```
