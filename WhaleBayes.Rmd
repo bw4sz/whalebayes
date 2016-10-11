@@ -72,25 +72,25 @@ $$ Behavior \sim Bernoulli(\rho)$$
 
 ## Example 1: Random occurrence with random behavior with respect to space
 
-To help illustrate this example, the coins have different margin total, but are randomly distributed in the system
-
 ```{r}
-r<-raster(nrows=30,ncol=30)
+r<-raster(nrows=20,ncol=20)
 
 #Occurrence
-phi=0.75
+phi=0.5
 occ<-rbinom(n=ncell(r),size=1,prob=phi)
 
-#Behavior
-rho=0.4
+#Conditional Behavior
+rho=0.25
 beh<-rbinom(n=ncell(r),size=1,prob=rho) + 1
 
 r[]<-occ * beh
 plot(r)
 
+#conditional behavior
+v<-beh * occ
 #get x y locations
 
-dat<-data.frame(cell=1:ncell(r),occ,beh)
+dat<-data.frame(cell=1:ncell(r),occ,beh,v)
 ```
 
 ```{r,child="Bayesian/Intercept.R",eval=T}
@@ -105,14 +105,14 @@ data=list(
   cells=max(dat$cell),
   X=dat$occ,
   #state 1 behav
-  beh=(dat$beh==2)*1
+  v=(dat$v==2)*1
 )
 
 #paramters to track
 pt<-c("phi","rho","m")
 
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=20000,n.burnin=19000,n.thin=1,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=49000,n.thin=1,DIC=FALSE))
 
 
 #bind chains
@@ -127,9 +127,7 @@ ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="bl
 
 While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
 
-The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "m") %>% summarize(mean(value))),2)`, very close to the true known value of 0.25 (which we can estimate using bayes rule).
-
-$$ P(B=2|Occ=1) = \frac{P(B=2,Occ=1)}{Occ=1} $$
+The key value of interest is z, the joint probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "m") %>% summarize(mean(value))),2)`, very close to the true known value of 0.125 (which we can estimate using bayes rule).
 
 As we increase the grid size (more data), we would converge on the true answer.
 
@@ -170,7 +168,7 @@ plot(r)
 
 #get x y locations
 
-dat<-data.frame(cell=1:ncell(r),occ,beh)
+dat<-data.frame(cell=1:ncell(r),occ,beh,v=occ*beh)
 ```
 
 ```{r,child="Bayesian/Env.R",eval=T}
@@ -183,15 +181,15 @@ source("Bayesian/Env.R")
 data=list(
   cell=dat$cell,
   cells=max(dat$cell),
-  X=dat$v,
+  X=dat$occ,
   env=env[],
-  beh=(dat$beh==2)*1
+  v=(dat$v==2)*1
 )
 
 #paramters to track
-pt<-c("rho","alpha","beta")
+pt<-c("rho","alpha","beta","m")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=100000,n.burnin=35000,n.thin=1,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=100,n.burnin=0,n.thin=2,DIC=FALSE))
 
 
 #bind chains
@@ -201,12 +199,12 @@ colnames(pc)<-c("Draw","chain","par","value")
 #extract parameter name
 pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
 
-ggplot(pc[pc$parameter %in% c("alpha","beta","rho"), ],aes(x=Draw,y=value)) + facet_wrap(~parameter,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
+ggplot(pc[pc$parameter %in% c("alpha","beta","rho","m"), ],aes(x=Draw,y=value)) + facet_wrap(~parameter,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 
 #add in true lines
 
 true_state<-data.frame(parameter=c("alpha","beta","rho"),value=c(alpha,beta,rho))
-ggplot(pc[pc$parameter %in% c("alpha","beta","rho"),],aes(x=value))  + geom_density(fill="black") + geom_vline(data=true_state,col="red",linetype="dashed",aes(xintercept=value))+ facet_wrap(~parameter,scales="free")
+ggplot(pc[pc$parameter %in% c("alpha","beta","rho","m"),],aes(x=value))  + geom_density(fill="black") + geom_vline(data=true_state,col="red",linetype="dashed",aes(xintercept=value))+ facet_wrap(~parameter,scales="free")
 ```
 
 The critical thing to notice here is that while were able to parameterize a occurrence function (true state in dashed red lines), the probability of behavior is broadly centered on 0.5, with wide confidence intervals. This alerts us that the behavior itself has little environmental influence. 
@@ -262,7 +260,7 @@ r[]<-occ*beh
 plot(r)
 
 #get x y locations
-dat<-data.frame(cell=1:ncell(env),occ,beh)
+dat<-data.frame(cell=1:ncell(env),occ,beh,v=occ*beh)
 ```
 
 ```{r,child="Bayesian/Env2.R",eval=T}
@@ -278,13 +276,13 @@ data=list(
   X=dat$occ,
   env=env[],
   env2=env2[],
-  beh=(dat$beh==1)*1
+  v=(dat$v==2)*1
 )
 
 #paramters to track
-pt<-c("alpha2","beta2","alpha","beta")
+pt<-c("alpha2","beta2","alpha","beta","m")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env2.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=20000,n.burnin=15000,n.thin=4,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env2.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=45000,n.thin=4,DIC=FALSE))
 
 #bind chains
 pc<-melt(jagM$BUGSoutput$sims.array)

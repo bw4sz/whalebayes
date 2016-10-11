@@ -6,9 +6,10 @@ cat("
     
     for (cell in 1:cells){
     
-    #Behavior, add tiny offset
-    beh[cell] ~ dbern(rho * X[cell]+0.000001)
+    #Conditional Behavior
+    v[cell] ~ dbern(z[cell])
     
+    z[cell] <- rho * X[cell]
     #Occurrence
     X[cell] ~ dbern(phi[cell])
     
@@ -17,6 +18,9 @@ cat("
 
     }
     
+    #marginal probability
+    m=mean(z[])
+
     #Priors
     alpha ~ dnorm(0,0.386)
     beta ~ dnorm(0,0.386)

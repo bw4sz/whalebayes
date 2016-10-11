@@ -44,7 +44,7 @@ $$ Occurrence \sim Bernoulli(\phi)$$
 $$ Behavior \sim Bernoulli(\rho)$$
 
 
-## Example 1: Random occurrence with random behavior
+## Example 1: Random occurrence with random behavior with respect to space
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-3-1.png" style="display: block; margin: auto;" />
 
@@ -56,13 +56,16 @@ model{
     #Liklihood
 
     for (cell in 1:cells){
-      X[cell] ~ dbern(z)
+      
+      v[cell] ~ dbern(z[cell])
+
+      z[cell]= X[cell] * rho 
+
+      X[cell] ~ dbern(phi)
     }
 
-    #conditional
-    z=rho * phi
+    m=mean(z[])
 
-    #Priors
     rho ~ dbeta(1,1)
     phi ~ dbeta(1,1)
 
@@ -73,14 +76,16 @@ sink()
 
 ```
 ##    user  system elapsed 
-##    0.06    0.03    3.08
+##    0.03    0.01   25.86
 ```
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-5-1.png" style="display: block; margin: auto;" /><img src="WhaleBayes_files/figure-html/unnamed-chunk-5-2.png" style="display: block; margin: auto;" />
 
 While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
 
-The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is 0.28, very close to the true known value of 0.25. As we increase the grid size (more data), we would converge on the true answer.
+The key value of interest is z, the joint probability of foraging given occurrence. Here the mean estimate is 0.14, very close to the true known value of 0.125 (which we can estimate using bayes rule).
+
+As we increase the grid size (more data), we would converge on the true answer.
 
 ## Example 2: Environmentally dependent occurrence with random behavior
 
@@ -100,19 +105,27 @@ cat("
     #Liklihood
     
     for (cell in 1:cells){
-      X[cell] ~ dbern(z[cell])
-      z[cell] = rho * phi[cell]
-  
-      #Env function
-      logit(phi[cell]) = alpha + beta * env[cell]  
-      }
     
+    #Conditional Behavior
+    v[cell] ~ dbern(z[cell])
+    
+    z[cell] <- rho * X[cell]
+    #Occurrence
+    X[cell] ~ dbern(phi[cell])
+    
+    #Occ function
+    logit(phi[cell]) = alpha + beta * env[cell]  
+
+    }
+    
+    #marginal probability
+    m=mean(z[])
 
     #Priors
-    rho ~ dbeta(1,1)
     alpha ~ dnorm(0,0.386)
     beta ~ dnorm(0,0.386)
-
+    
+    rho ~ dbeta(1,1)
     
     }"
     ,fill=TRUE)
@@ -121,10 +134,12 @@ sink()
 
 ```
 ##    user  system elapsed 
-##    0.66    0.05   30.00
+##    0.03    0.00    1.49
 ```
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-8-1.png" style="display: block; margin: auto;" /><img src="WhaleBayes_files/figure-html/unnamed-chunk-8-2.png" style="display: block; margin: auto;" />
+
+The critical thing to notice here is that while were able to parameterize a occurrence function (true state in dashed red lines), the probability of behavior is broadly centered on 0.5, with wide confidence intervals. This alerts us that the behavior itself has little environmental influence. 
 
 ## Example 3: Environmentally dependent occurrence with environmentally dependent behavior
 
@@ -147,25 +162,31 @@ cat("
     #Liklihood
     
     for (cell in 1:cells){
-    X[cell] ~ dbern(z[cell])
-    z[cell] = rho[cell] * phi[cell]
     
-    #Env function
+    #Conditional Behavior
+    v[cell] ~ dbern(z[cell])
+    
+    z[cell] <- rho[cell] * X[cell]
+    #Occurrence
+    X[cell] ~ dbern(phi[cell])
+    
+    #Occ function
     logit(phi[cell]) = alpha + beta * env[cell]  
-
-    #Behavior function
+    
+    #Behavior 
     logit(rho[cell]) = alpha2 + beta2 * env2[cell]  
 
     }
     
+    #marginal probability
+    m=mean(z[])
     
     #Priors
     alpha ~ dnorm(0,0.386)
     beta ~ dnorm(0,0.386)
     
     alpha2 ~ dnorm(0,0.386)
-    beta2 ~ dnorm(0,0.386)
-    
+    beta2 ~ dnorm(0,0.386)    
     }"
     ,fill=TRUE)
 sink()
@@ -173,12 +194,10 @@ sink()
 
 ```
 ##    user  system elapsed 
-##    0.04    0.03   37.69
+##    0.03    0.02  112.25
 ```
 
 <img src="WhaleBayes_files/figure-html/unnamed-chunk-11-1.png" style="display: block; margin: auto;" /><img src="WhaleBayes_files/figure-html/unnamed-chunk-11-2.png" style="display: block; margin: auto;" />
-
-The critical thing to notice here is that while were able to parameterize a occurrence function (true state in dashed red lines), the probability of behavior is broadly centered on 0.5, with wide confidence intervals. This alerts us that the behavior itself has little environmental influence. 
 
 The critical thing to notice here is that while were able to parameterize a occurrence function (true state in dashed red lines), the probability of behavior is broadly centered on 0.5, with wide confidence intervals. This alerts us that the behavior itself has little environmental influence. 
 

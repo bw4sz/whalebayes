@@ -6,9 +6,9 @@ model{
 
     for (cell in 1:cells){
       
-      beh[cell] ~ dbern(z[cell])
+      v[cell] ~ dbern(z[cell])
 
-      z[cell]=X[cell] * rho + 0.00001
+      z[cell]= X[cell] * rho 
 
       X[cell] ~ dbern(phi)
     }
