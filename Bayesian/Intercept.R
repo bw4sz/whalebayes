@@ -11,8 +11,6 @@ model{
       X[cell] ~ dbern(phi)
     }
 
-    #conditional
-    #z=rho * phi
 
     rho ~ dbeta(1,1)
     phi ~ dbeta(1,1)

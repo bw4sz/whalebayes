@@ -165,9 +165,6 @@ plot(r)
 #get x y locations
 
 dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
-
-#just state ==1
-dat$v<-(dat$r==1)*1
 ```
 
 ```{r,child="Bayesian/Env.R",eval=T}
@@ -185,15 +182,14 @@ data=list(
 )
 
 #paramters to track
-pt<-c("phi","rho","z","alpha","beta")
+pt<-c("rho","alpha","beta")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=49000,n.thin=1,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=40000,n.burnin=35000,n.thin=1,DIC=FALSE))
 
 
 #bind chains
 pc<-melt(jagM$BUGSoutput$sims.array)
 colnames(pc)<-c("Draw","chain","par","value")
-
 
 #extract parameter name
 pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
@@ -230,8 +226,8 @@ for(x in 1:ncol(env)){
 }
 
 #env 1 functions for occurrence
-alpha=-2
-beta=.5
+alpha=-1
+beta=0.1
 po<-inv.logit(alpha + beta *env[])
 
 env2<-raster(nrows=20,ncol=20)
@@ -243,7 +239,7 @@ for(x in 1:nrow(env2)){
 
 #env 2 functions for behavior
 alpha2=-1
-beta2=0.5
+beta2=0.1
 bo<-inv.logit(alpha2 + beta2 *env2[])
 
 qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
@@ -281,7 +277,7 @@ data=list(
 #paramters to track
 pt<-c("alpha2","beta2","alpha","beta")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env2.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=45000,n.thin=4s,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env2.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=20000,n.burnin=15000,n.thin=4,DIC=FALSE))
 
 #bind chains
 pc<-melt(jagM$BUGSoutput$sims.array)
