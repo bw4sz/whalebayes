@@ -70,7 +70,9 @@ $$ Occurrence \sim Bernoulli(\phi)$$
 $$ Behavior \sim Bernoulli(\rho)$$
 
 
-## Example 1: Random occurrence with random behavior
+## Example 1: Random occurrence with random behavior with respect to space
+
+To help illustrate this example, the coins have different margin total, but are randomly distributed in the system
 
 ```{r}
 r<-raster(nrows=30,ncol=30)
@@ -107,7 +109,7 @@ data=list(
 )
 
 #paramters to track
-pt<-c("phi","rho","z")
+pt<-c("phi","rho","m")
 
 
 system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=20000,n.burnin=19000,n.thin=1,DIC=FALSE))
@@ -125,7 +127,11 @@ ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="bl
 
 While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
 
-The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "z") %>% summarize(mean(value))),2)`, very close to the true known value of 0.25 (which we can estimate using bayes rule). As we increase the grid size (more data), we would converge on the true answer.
+The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "m") %>% summarize(mean(value))),2)`, very close to the true known value of 0.25 (which we can estimate using bayes rule).
+
+$$ P(B=2|Occ=1) = \frac{P(B=2,Occ=1)}{Occ=1} $$
+
+As we increase the grid size (more data), we would converge on the true answer.
 
 ## Example 2: Environmentally dependent occurrence with random behavior
 
@@ -178,7 +184,8 @@ data=list(
   cell=dat$cell,
   cells=max(dat$cell),
   X=dat$v,
-  env=env[]
+  env=env[],
+  beh=(dat$beh==2)*1
 )
 
 #paramters to track
