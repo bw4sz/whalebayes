@@ -9,10 +9,10 @@
       beh[cell] ~ dbern(rho[cell])
   
       #Occurrence
-      X[cell] ~ dbern(phi[cell])
+      #X[cell] ~ dbern(phi[cell])
       
       #Occ function
-      logit(phi[cell]) = alpha + beta * env[cell]  
+      #logit(phi[cell]) = alpha + beta * env[cell]  
   
       #Behavior function
       logit(rho[cell]) = alpha2 + beta2 * env2[cell]  

@@ -5,13 +5,12 @@ model{
 
     for (cell in 1:cells){
       
-      beh[cell] ~ dbern(rho*X[cell]+0.000001)
+      beh[cell] ~ dbern(X[cell] * rho + 0.0001)
 
       X[cell] ~ dbern(phi)
     }
 
-    #conditional
-    #z=rho * phi
+    z= rho * phi
 
     rho ~ dbeta(1,1)
     phi ~ dbeta(1,1)

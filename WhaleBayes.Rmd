@@ -73,14 +73,14 @@ $$ Behavior \sim Bernoulli(\rho)$$
 ## Example 1: Random occurrence with random behavior
 
 ```{r}
-r<-raster(nrows=20,ncol=20)
+r<-raster(nrows=30,ncol=30)
 
 #Occurrence
-phi=0.5
+phi=0.75
 occ<-rbinom(n=ncell(r),size=1,prob=phi)
 
 #Behavior
-rho=0.5
+rho=0.4
 beh<-rbinom(n=ncell(r),size=1,prob=rho) + 1
 
 r[]<-occ * beh
@@ -103,7 +103,7 @@ data=list(
   cells=max(dat$cell),
   X=dat$occ,
   #state 1 behav
-  beh=(dat$beh==1)*1
+  beh=(dat$beh==2)*1
 )
 
 #paramters to track
@@ -119,13 +119,13 @@ colnames(pc)<-c("Draw","chain","par","value")
 
 ggplot(pc,aes(x=Draw,y=value)) + facet_wrap(~par,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 
-true_state<-data.frame(parameter=c("phi","rho"),value=c(phi,rho))
+true_state<-data.frame(par=c("phi","rho"),value=c(phi,rho))
 ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="black") + geom_vline(data=true_state,col="red",linetype="dashed",aes(xintercept=value))
 ```
 
 While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
 
-The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "z") %>% summarize(mean(value))),2)`, very close to the true known value of 0.25. As we increase the grid size (more data), we would converge on the true answer.
+The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "z") %>% summarize(mean(value))),2)`, very close to the true known value of 0.25 (which we can estimate using bayes rule). As we increase the grid size (more data), we would converge on the true answer.
 
 ## Example 2: Environmentally dependent occurrence with random behavior
 
@@ -146,14 +146,14 @@ for(x in 1:ncol(env)){
 }
 
 #env functions
-alpha=-2
-beta=0.1
+alpha=-4
+beta=0.4
 po<-inv.logit(alpha + beta *env[])
 
 qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
 
 #Occurrence is a function of temperature
-occ<-rbinom(n=ncell(r),size=1,prob=po)
+occ<-sapply(po,function(x) rbinom(n=1,size=1,prob=x))
 
 #Behavior
 rho=0.5
@@ -164,7 +164,7 @@ plot(r)
 
 #get x y locations
 
-dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
+dat<-data.frame(cell=1:ncell(r),occ,beh)
 ```
 
 ```{r,child="Bayesian/Env.R",eval=T}
@@ -184,7 +184,7 @@ data=list(
 #paramters to track
 pt<-c("rho","alpha","beta")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=40000,n.burnin=35000,n.thin=1,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=100000,n.burnin=35000,n.thin=1,DIC=FALSE))
 
 
 #bind chains
@@ -226,8 +226,8 @@ for(x in 1:ncol(env)){
 }
 
 #env 1 functions for occurrence
-alpha=-1
-beta=0.1
+alpha=-5
+beta=1
 po<-inv.logit(alpha + beta *env[])
 
 env2<-raster(nrows=20,ncol=20)
@@ -238,24 +238,24 @@ for(x in 1:nrow(env2)){
 }
 
 #env 2 functions for behavior
-alpha2=-1
-beta2=0.1
+alpha2=-5
+beta2=1
 bo<-inv.logit(alpha2 + beta2 *env2[])
 
 qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
 qplot(env2[],bo,geom=c("point")) + labs(x="Environment",y="Probability of Behavior 1")
 
 #Occurrence is a function of temperature
-occ<-rbinom(n=ncell(r),size=1,prob=po)
+occ<-sapply(po,function(x) rbinom(n=1,size=1,prob=x))
 
 #Behavior
-beh<-rbinom(n=ncell(r),size=1,prob=bo) + 1
+beh<-sapply(bo,function(x) rbinom(n=1,size=1,prob=x) + 1)
 
-r[]<-occ * beh
+r[]<-occ*beh
 plot(r)
 
 #get x y locations
-dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
+dat<-data.frame(cell=1:ncell(env),occ,beh)
 ```
 
 ```{r,child="Bayesian/Env2.R",eval=T}
