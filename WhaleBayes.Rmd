@@ -1,5 +1,5 @@
 ---
-title: "Whale Bayes: On seperating occurrence and behavior in movement ecology"
+title: "Whale Bayes: On seperating predictors of occurrence and behavior in animal movement"
 author: "Ben Weinstein"
 date: "`r Sys.time()`"
 output: 
@@ -8,6 +8,7 @@ output:
     number_sections: yes
     theme: spacelab
     toc: yes
+    toc_float: yes
 ---
 
 ```{r,echo=F,warning=F,message=F}
@@ -24,10 +25,13 @@ library(knitr)
 opts_chunk$set(echo=F,fig.height=4,fig.width=7,fig.align='center')
 ```
 
+#Aim
+
 A fundamental goal in ecology is to attribute the movement of animals across space and time to ecological mechanisms. Animals travel to find food, mates, shelter, and predator free space. Using individual data to parameterize movement models, ecologist have gained insight into animal distribution, migration, and behavior.Pinning down the causes and predictors of animal movement remains a challenging task for ecologists and conservation managers in a changing world. 
 
 While there has been immense focus on describing movement processes, mechanisms, autocorrelation structures, and behavioral phases, it remains difficult to distinguish movement mechanisms across space and time. It is natural to assume that movement phases ('foraging', 'traveling', 'resting') are functions of the environment and life-history strategies. One glaring challenge is partitioning  species presence and behavior. Given that species must be present to participate in behavior, it is natural to assume that two processes are invariably linked. However, when we begin to think about predicting species behavior, we may spuriously conflate the predictors of animal behavior with the predictor of species presence. To date, all movement models assume that presence is given, and seek to extract the environment signatures of behavior based on logistic funtions and markov-models of state dependence. Our aim to step back and relate the huge body of movement ecology literature with the equally well-developed literature of species distribution modeling. We were inspired by the recent paper (Gravel) seeking to biotic interactions and distributions at scale. Our conceptual framework is based on Bayes Rule and statements of conditional probability.
 
+# Simulation
 Consider a grid of cells
 
 ```{r}
@@ -88,6 +92,9 @@ dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
 dat$v<-(dat$r==1)*1
 ```
 
+```{r,child="Bayesian/Intercept.R",eval=T}
+```
+
 ```{r,eval=T}
 #source jags file
 source("Bayesian/Intercept.R")
@@ -115,7 +122,7 @@ ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="bl
 
 While this will work for simple cases, clearly as we see more complex functions, the probability of occurrence (phi) and the probability of behavior == 1 (rho) will become unidentifiable, and the liklihood landscape will not converge. 
 
-The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r as.numeric(pc %>% filter(par %in% "z") %>% summarize(mean(value)))`
+The key value of interest is z, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "z") %>% summarize(mean(value))),2)`, very close to the true known value of 0.25. As we increase the grid size (more data), we would converge on the true answer.
 
 ## Example 2: Environmentally dependent occurrence with random behavior
 
@@ -136,8 +143,8 @@ for(x in 1:ncol(env)){
 }
 
 #env functions
-alpha=-5
-beta=1
+alpha=-2
+beta=.5
 po<-inv.logit(alpha + beta *env[])
 
 qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
@@ -160,6 +167,9 @@ dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
 dat$v<-(dat$r==1)*1
 ```
 
+```{r,child="Bayesian/Env.R",eval=T}
+```
+
 ```{r,eval=T}
 #source jags file
 source("Bayesian/Env.R")
@@ -174,7 +184,7 @@ data=list(
 #paramters to track
 pt<-c("phi","rho","z","alpha","beta")
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10000,n.burnin=9900,n.thin=1,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=49500,n.thin=1,DIC=FALSE))
 
 
 #bind chains
@@ -195,7 +205,101 @@ ggplot(pc[pc$parameter %in% c("alpha","beta","rho"),],aes(x=value))  + geom_dens
 
 The critical thing to notice here is that while were able to parameterize a occurrence function (true state in dashed red lines), the probability of behavior is broadly centered on 0.5, with wide confidence intervals. This alerts us that the behavior itself has little environmental influence. 
 
-### Compare to tradiditonal moveHMM
+## Example 3: Environmentally dependent occurrence with environmentally dependent behavior
 
-Compare the same data and simulated function when entered into a traditional movement model. We use the moveHMM package for easy comparison. Our 'track' is an animal passing into every cell, randomly. We want to stress that in no way are we degraded the very excellent work by many movement ecologists, and especially the designers of the moveHMM package. The model being tested was not developed with such a mixture in mind. Nor are we claiming that the divide among occurrence and behavior was unknown. Instead we aim to link two parts of ecological thought, which we hope will motivate continued development within these communities. 
+Moving towards the aim of analysis, let's continue with environmentally dependent occurrence, but environmentally independent behavior. We do not claim that behavior is itself random, but that the marginal probabilities of behavior are 0.5 with respect to the environmental conditions of the cell.
+
+$$ X = Bernoulli(z)  $$
+$$ z= \phi * \rho$$
+$$ logit(\phi) = \alpha + \beta * environment $$
+$$ logit(\rho) = \alpha_2 + \beta_2 * environment_2 $$
+
+Where the environmental predictors for occurrence and behavior are different variables (eg. temperature, bathymetry).
+
+```{r}
+r<-raster(nrows=10,ncol=10)
+r[]<-1:ncell(r)
+env<-raster(nrows=10,ncol=10)
+
+#environment 1
+for(x in 1:ncol(env)){
+  env[,x]<-x
+}
+
+#env 1 functions for occurrence
+alpha=-2
+beta=.5
+po<-inv.logit(alpha + beta *env[])
+
+env2<-raster(nrows=10,ncol=10)
+
+#environment 1
+for(x in 1:nrow(env2)){
+  env2[x,]<-x
+}
+
+#env 1 functions for occurrence
+alpha2=-2
+beta2=1
+bo<-inv.logit(alpha2 + beta2 *env2[])
+
+qplot(env[],po,geom=c("point")) + labs(x="Environment",y="Probability of Occurrence")
+qplot(env2[],bo,geom=c("point")) + labs(x="Environment",y="Probability of Behavior 1")
+
+#Occurrence is a function of temperature
+occ<-rbinom(n=ncell(r),size=1,prob=po)
+
+#Behavior
+
+beh<-rbinom(n=ncell(r),size=1,prob=bo) + 1
+
+r[]<-occ * beh
+plot(r)
+
+#get x y locations
+dat<-data.frame(cell=1:ncell(r),occ,beh,r=occ*beh)
+
+#just state ==1
+dat$v<-(dat$r==1)*1
+```
+
+```{r,child="Bayesian/Env2.R",eval=T}
+```
+
+```{r,eval=T}
+#source jags file
+source("Bayesian/Env2.R")
+
+data=list(
+  cell=dat$cell,
+  cells=max(dat$cell),
+  X=dat$v,
+  env=env[],
+  env2=env2[]
+)
+
+#paramters to track
+pt<-c("alpha2","beta2","alpha","beta")
+
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Env2.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=50000,n.burnin=45000,n.thin=2,DIC=FALSE))
+
+#bind chains
+pc<-melt(jagM$BUGSoutput$sims.array)
+colnames(pc)<-c("Draw","chain","par","value")
+
+
+#extract parameter name
+pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+
+ggplot(pc[pc$parameter %in% c("alpha","beta","beta2","alpha2"), ],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free") + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
+
+#add in true lines
+
+true_state<-data.frame(parameter=c("alpha","beta","beta2","alpha2"),value=c(alpha,beta,beta2,alpha2))
+ggplot(pc[pc$parameter %in% c("alpha","beta","alpha2","beta2"),],aes(x=value))  + geom_density(fill="black") + geom_vline(data=true_state,col="red",linetype="dashed",aes(xintercept=value))+ facet_wrap(~parameter,scales="free")
+```
+
+The critical thing to notice here is that while were able to parameterize a occurrence function (true state in dashed red lines), the probability of behavior is broadly centered on 0.5, with wide confidence intervals. This alerts us that the behavior itself has little environmental influence. 
+
+We want to stress that in no way are we degraded the very excellent work by many movement ecologists, and especially the designers of the moveHMM package. The model being tested was not developed with such a mixture in mind. Nor are we claiming that the divide among occurrence and behavior was unknown. Instead we aim to link two parts of ecological thought, which we hope will motivate continued development within these communities. 
 
