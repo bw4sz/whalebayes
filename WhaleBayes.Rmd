@@ -104,7 +104,7 @@ data=list(
   cell=dat$cell,
   cells=max(dat$cell),
   X=dat$occ,
-  #state 1 behav
+  #state 2 behav
   v=(dat$v==2)*1
 )
 
