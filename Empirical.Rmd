@@ -291,6 +291,8 @@ occ$bat<-raster::extract(elev,occ)
 occ$bat[is.na(occ$bat)]<-0
 ```
 
+#Behavioral Layers
+
 ```{r,child="Bayesian/MultiSpecies.R",eval=T}
 ```
 
@@ -300,10 +302,10 @@ source("Bayesian/MultiSpecies.R")
 
 #prior cov shape
 R <- diag(c(1,1))
-data=list(argos=obs,steps=steps,R=R,ind=ind,j=j,idx=idx,tracks=tracks,Month=MonthA,Months=max(MonthA,na.rm=T))
+data=list(argos=obs,steps=steps,R=R,ind=ind,j=j,idx=idx,tracks=tracks)
 
 #paramters to track
-pt<-c("theta","gamma","phi","alpha_mu","state")
+pt<-c("theta","gamma","alpha_mu","state")
 
 if(newModel){
   system.time(jagM<-jags.parallel(model.file = "Bayesian/Multi_RW.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=10,n.burnin=0,n.thin=1,DIC=FALSE))
@@ -358,14 +360,6 @@ splitpc[c("alpha_mu","gamma")]<-lapply(splitpc[c("alpha_mu","gamma")],function(x
     return(pc)
 })
 
-#Three index
-splitpc[c("phi")]<-lapply(splitpc[c("phi")],function(x){
-#As matrices
-    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+),(\\d+),(\\d+)]"))[,3:6]
-    colnames(sv)<-c("Animal","Track","step","Behavior")
-    pc<-data.frame(x,sv)
-})
-
 #State index
 splitpc[c("state")]<-lapply(splitpc[c("state")],function(x){
 #As matrices
@@ -378,16 +372,8 @@ splitpc[c("state")]<-lapply(splitpc[c("state")],function(x){
 pc<-rbind_all(splitpc)
 rm(splitpc)
 
-#associate month with state
-mm<-melt(MonthIndex)
-colnames(mm)<-c("Animal","Track","step","MonthA")
-pc<-merge(pc,mm,by=c("Animal","Track","step"),all.x=T)
-
-#complete level matching, ugly but successful
-
-pc[pc$parameter %in% c("alpha_mu","gamma"),]$MonthA<-month.name[as.numeric(pc$Month[pc$parameter %in% c("alpha_mu","gamma")])]
-pc$MonthA<-factor(pc$MonthA,levels=month.name)
-
+#make behavior a factor
+pc$Behavior<-as.factor(pc$Behavior)
 ```
 
 ```{r,fig.height=10}
@@ -395,134 +381,50 @@ pc$MonthA<-factor(pc$MonthA,levels=month.name)
 ggplot(pc[!pc$parameter %in% c("phi","state"),],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free",ncol=3) + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 ```
 
-```{r,eval=F}
-#write.csv
-#write.csv(pc,"OutData/pars.csv")
-#pc<-read.csv("OutData/pars.csv")
-pc$Behavior<-as.factor(pc$Behavior)
-```
-
+### View behavioral model posteriors
 
 ```{r,fig.height=20}
 #Plot
 ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histogram() + facet_wrap(~par,scales='free',ncol=3) + theme_bw()  + ggtitle("Estimated parameters")
 ```
 
-#Behavioral Prediction
+##Behavioral Prediction
 
 ```{r}
-#We just need Foraging behavior
-behav_chains<-pc[pc$parameter %in% "phi" & pc$Behavior==2,]
-
-#arrange by time - capitalize
-behav_chains$step<-as.numeric(as.character(behav_chains$step))
-behav_chains<-behav_chains %>% arrange(step)
-
-#Label Behaviors
-behav_chains$Behavior<-as.factor(behav_chains$Behavior)
-levels(behav_chains$Behavior)<-c("Traveling","Area Restricted Search")
-
-#mean transition probability
-mean_phi<-behav_chains %>% group_by(Animal,Track,step) %>% summarize(phi=mean(value))
-
 #mode state for each position
 mode_state<-pc %>% filter(pc$parameter %in% "state") %>% group_by(Animal,Track,step) %>% summarize(state=as.numeric(names(which.max(table(value)))))
-
-mxy<-merge(mxy,mean_phi,by=c("step","Track","Animal"))
 
 mxy<-merge(mxy,mode_state,by=c("step","Track","Animal"))
 
 #ensure order for plotting
 mxy<-mxy %>% arrange(Animal,Track,step,jStep)
-
-rm(behav_chains)
 ```
 
-# Create Behavior maps 
+#Foraging suitabality
 
-```{r,fig.height=7,fig.width=11}
-
-#time in each cell function
-  timecell<-function(j){
-    
-    rlej<-rle(x=diff(j$Index))
-    position<-c(1,cumsum(rlej$lengths))
-    timestack<-c()
-    
-    #if only one position
-    if(length(position)==1){
-      timestack[1]<-0
-      
-    } else {
-      
-      #time difference between first and last point in the cell
-        for(x in 2:length(position)){
-          timed<-j[position[x-1]:position[x],]
-          timestack[x-1]<-difftime(max(timed$timestamp),min(timed$timestamp),units="days")
-      }
-    }
-  
-    out<-data.frame(Sum=sum(timestack))
-    return(out)
-  }
-  
-restime<-function(mxy){
-  #raster
-  r<-raster(extent(d)*c(1.1,1.1),nrow=100,ncol=100)
-  
-  #res(r)<-0.25
-  #put cellindex number
-  r[]<-1:ncell(r)
-  
-  sxy<-split(mxy,mxy$Animal)
-  sxy<-lapply(sxy,function(x) {x$Index<-1:nrow(x); return(x)})
-  
-  
-  #loop through all animals
-  sptracks<-lapply(sxy,function(x){
-    k<-SpatialPointsDataFrame(cbind(x$x,x$y),data=x,proj4string=CRS("+proj=longlat +datum=WGS84"))
-    
-    #get the cells that points are in
-    k$cellvalue<-raster::extract(x=r,y=k)
-    
-    #for each cell value, perform time function
-    sptrack<-as.data.frame(k) %>% group_by(Animal,cellvalue) %>% do(timecell(.))
-    return(sptrack)}
-  )
-  
-  sptracks<-rbind_all(sptracks)
-  
-  #get sum across animals
-  cellvals<-sptracks %>% group_by(cellvalue) %>% summarize(Sum=sum(Sum))
-  
-  #is there a better way to loop through?
-  r[]<-NA
-  for(x in 1:nrow(cellvals)){
-    r[cellvals$cellvalue[x]]<-cellvals$Sum[x]
-  }
-  return(r)
-}
-
-plot(restime(mxy))
-
-#split tracks by month data, just get foraging data
-md<-split(mxy[mxy$state==2,],mxy[mxy$state==2,"Month"],drop=T)
-
-r<-stack(lapply(md,restime))
-
-plot(r)
-
-#turn to 
-f<-melt(data.frame(rasterToPoints(r)),id.vars=c("x","y"))
-
-#remove NA's
-f<-f %>% filter(!is.na(value))
-
-ggmap(m) + geom_tile(data=f,aes(x=x,y=y,fill=value))  + scale_fill_continuous(low="blue",high="red") + labs(fill="Days")  + facet_wrap(~variable)  + theme(axis.text.x=element_blank(),axis.text.y=element_blank(),axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + labs(x="",y="")
-ggsave("Figures/ResidencyMap.jpg",height=6,width=9,dpi=300)
-```
-
+Fow now, a cell gets labeled as suitable for foraging if it ever has predicted foraging state.
 
 ```{r}
-save.image("DynamicForaging.RData")
+d3<-SpatialPointsDataFrame(cbind(mxy$x,mxy$y),data=data.frame(mxy),proj4string=CRS("+proj=longlat +datum=WGS84"))
+#add a dummy code
+d2$dummy<-1
+
+forage<-rasterize(d3,r,field="state",fun="max")
+plot(forage,col=topo.colors(10))
+```
+
+```{r}
+#combine into one data.frame, need to ensure spatial structure lines up
+foragedf<-rasterToPoints(forage)
+colnames(foragedf)[3]<-"Behavior"
+
+#merge with occurrence data.
+k<-merge(occ,foragedf,by=c("x","y"))
+
+#ensure that no behavior in absence points.
+table(k$layer,k$Behavior)
+```
+
+```{r}
+save.image("Empirical.RData")
 ```

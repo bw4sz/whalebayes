@@ -31,7 +31,7 @@ cat("
     for(t in 2:(steps[i,g]-1)){
     
     #Behavioral State at time T
-    logit(phi[i,g,t,1]) <- alpha_mu[state[i,g,t-1],Month[i,g,t]] 
+    logit(phi[i,g,t,1]) <- alpha_mu[state[i,g,t-1]] 
     phi[i,g,t,2] <- 1-phi[i,g,t,1]
     state[i,g,t] ~ dcat(phi[i,g,t,])
     
@@ -43,14 +43,14 @@ cat("
     T[i,g,t,2,2] <- cos(theta[state[i,g,t]])
     
     #Correlation in movement change
-    d[i,g,t,1:2] <- y[i,g,t,] + gamma[state[i,g,t],Month[i,g,t]] * T[i,g,t,,] %*% (y[i,g,t,1:2] - y[i,g,t-1,1:2])
+    d[i,g,t,1:2] <- y[i,g,t,] + gamma[state[i,g,t]] * T[i,g,t,,] %*% (y[i,g,t,1:2] - y[i,g,t-1,1:2])
     
     #Gaussian Displacement
     y[i,g,t+1,1:2] ~ dmnorm(d[i,g,t,1:2],iSigma)
     }
     
     #Final behavior state
-    logit(phi[i,g,steps[i,g],1]) <- alpha_mu[state[i,g,steps[i,g]-1],Month[i,g,steps[i,g]-1]] 
+    logit(phi[i,g,steps[i,g],1]) <- alpha_mu[state[i,g,steps[i,g]-1]] 
     phi[i,g,steps[i,g],2] <- 1-phi[i,g,steps[i,g],1]
     state[i,g,steps[i,g]] ~ dcat(phi[i,g,steps[i,g],])
     
@@ -89,18 +89,13 @@ cat("
     ##Move persistance
     # prior for gamma (autocorrelation parameter) in state 1
 
-    #for each month
-    for (m in 1:Months){
-
     #Intercepts
-    alpha_mu[1,m] ~ dnorm(0,0.386)
-    alpha_mu[2,m] ~ dnorm(0,0.386)
+    alpha_mu[1] ~ dnorm(0,0.386)
+    alpha_mu[2] ~ dnorm(0,0.386)
     
-    gamma[2,m] ~ dbeta(1.5, 2)		## gamma for state 2
-    dev[m] ~ dbeta(1,1)			## a random deviate to ensure that gamma[1] > gamma[2]
-    gamma[1,m] <- gamma[2,m] + dev[m] 		## gamma for state 1
-    }
-    
+    gamma[2] ~ dbeta(1.5, 2)		## gamma for state 2
+    dev ~ dbeta(1,1)			## a random deviate to ensure that gamma[1] > gamma[2]
+    gamma[1] <- gamma[2] + dev 		## gamma for state 1
     
     ##Behavioral States
     
