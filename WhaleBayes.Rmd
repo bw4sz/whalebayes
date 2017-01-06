@@ -126,7 +126,7 @@ ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="bl
 ```
 
 
-The key value of interest is z, the joint probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "m") %>% summarize(mean(value))),2)`, very close to the true known value of 0.125 (which we can estimate using bayes rule).
+The key value of interest is m, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "m") %>% summarize(mean(value))),2)`, very close to the true known value of 0.125 (which we can estimate using bayes rule).
 
 As we increase the grid size (more data), we would converge on the true answer.
 

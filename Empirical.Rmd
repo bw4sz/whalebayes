@@ -1,5 +1,5 @@
 ---
-title: "Dynamic Foraging Patterns in Antarctic Humpbacks"
+title: "Empirical example of conditional foraging probability"
 author: "Ben Weinstein"
 date: "`r Sys.time()`"
 output: 
@@ -96,8 +96,8 @@ d<-SpatialPointsDataFrame(cbind(mxy$x,mxy$y),data=mxy,proj4string=CRS("+proj=lon
 
 #Plot
 pp<-c(mean(mxy$x),mean(mxy$y))
-m <- get_map(location=pp,source="google",zoom=4,scale=2,maptype="satellite",color = "bw")
-ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5) + scale_color_discrete(guide="none") + theme_inset()
+#m <- get_map(location=pp,source="google",zoom=4,scale=2,maptype="satellite",color = "bw")
+#ggmap(m)+geom_path(data=mxy, aes(x=x, y=y,col=as.factor(Animal)),size=.5) + scale_color_discrete(guide="none") + theme_inset()
 ```
 
 #Correlated random walk
@@ -376,14 +376,14 @@ rm(splitpc)
 pc$Behavior<-as.factor(pc$Behavior)
 ```
 
-```{r,fig.height=10}
+```{r,fig.height=5}
 #plot all but phi and state
 ggplot(pc[!pc$parameter %in% c("phi","state"),],aes(x=Draw,y=value)) + facet_wrap(~par,scales="free",ncol=3) + geom_line(aes(col=as.factor(chain))) + labs(col="Chain")
 ```
 
 ### View behavioral model posteriors
 
-```{r,fig.height=20}
+```{r,fig.height=5}
 #Plot
 ggplot(data=pc[!pc$parameter %in% c("phi","state"),],aes(x=value)) + geom_histogram() + facet_wrap(~par,scales='free',ncol=3) + theme_bw()  + ggtitle("Estimated parameters")
 ```
@@ -432,7 +432,6 @@ dat$cell<-1:nrow(dat)
 
 #Model 1: Conditional probability of foraging given occurrence.
 
-
 $$ X = Bernoulli(z)  $$
 $$ z= \phi * \rho$$
 $$ Occurrence \sim Bernoulli(\phi)$$
@@ -458,7 +457,7 @@ data=list(
 pt<-c("phi","rho","m")
 
 
-system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=1000,n.burnin=900,n.thin=1,DIC=FALSE))
+system.time(jagM<-jags.parallel(model.file = "Bayesian/Intercept.jags",data=data,n.chains=2,parameters.to.save=pt,n.iter=2000,n.burnin=1900,n.thin=1,DIC=FALSE))
 
 
 #bind chains
@@ -470,7 +469,7 @@ ggplot(pc,aes(x=Draw,y=value)) + facet_wrap(~par,scales="free") + geom_line(aes(
 ggplot(pc,aes(x=value)) + facet_wrap(~par,scales="free") + geom_density(fill="black")
 ```
 
-The key value of interest is z, the joint probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "m") %>% summarize(mean(value))),2)`, very close to the true known value of 0.125 (which we can estimate using bayes rule).
+The key value of interest is m, the conditional probability of foraging given occurrence. Here the mean estimate is `r round(as.numeric(pc %>% filter(par %in% "m") %>% summarize(mean(value))),2)`, very close to the true known value of 0.125 (which we can estimate using bayes rule).
 
 ```{r}
 save.image("Empirical.RData")
