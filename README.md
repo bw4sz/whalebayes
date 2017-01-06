@@ -1,2 +1,2 @@
-# WhaleShape
-Temporal change in foraging.
+# whalebayes
+Conditional probability of occurrence and behavior
